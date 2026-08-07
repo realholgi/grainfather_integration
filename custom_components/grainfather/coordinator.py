@@ -24,7 +24,12 @@ from .const import (
     DOMAIN,
     POLL_BOOST_SECONDS,
 )
-from .polling import _clamp_interval, compute_update_interval, snapshot_is_active
+from .polling import (
+    _clamp_interval,
+    compute_update_interval,
+    is_boost_active,
+    snapshot_is_active,
+)
 
 __all__ = [
     "GrainfatherDataUpdateCoordinator",
@@ -89,7 +94,7 @@ class GrainfatherDataUpdateCoordinator(DataUpdateCoordinator[GrainfatherSnapshot
     def _reschedule(self, snapshot: GrainfatherSnapshot) -> None:
         """Pick the next poll interval based on activity and any active boost."""
         now = datetime.now(timezone.utc)
-        boosted = self._boost_until is not None and now < self._boost_until
+        boosted = is_boost_active(self._boost_until, now)
         self.update_interval = compute_update_interval(
             snapshot,
             self._active_interval,

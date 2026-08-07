@@ -27,6 +27,11 @@ def _clamp_interval(seconds: int) -> int:
     return max(MIN_SCAN_INTERVAL, min(MAX_SCAN_INTERVAL, seconds))
 
 
+def is_boost_active(boost_until: datetime | None, now: datetime) -> bool:
+    """Return True while a post-action poll boost is still in effect."""
+    return boost_until is not None and now < boost_until
+
+
 def _parse_timestamp(value: str | None) -> datetime | None:
     if not value or not isinstance(value, str):
         return None
