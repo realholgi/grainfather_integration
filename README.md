@@ -45,11 +45,13 @@ The integration currently polls the Grainfather cloud API and exposes:
 - Fermentation history linked to devices and sessions
 - Recipe images
 
-The implementation is based on the API shape captured in the included Postman collection, including:
+The implementation is based on the API shape described in [docs/api.md](docs/api.md), including:
 
 - `/api/auth/login`
 - `/api/2/brew-sessions`
 - `/api/equipment/fermentation-devices`
+
+See [docs/api.md](docs/api.md) for the full Grainfather cloud API reference.
 
 ## Service Actions
 
@@ -82,7 +84,7 @@ Home Assistant only uses local custom integration branding from `brand/` startin
 - [custom_components/grainfather](custom_components/grainfather) contains the integration source
 - [tests](tests) contains API parsing tests
 - [pyproject.toml](pyproject.toml) contains local tooling configuration
-- [Grainfather.postman_collection.json](Grainfather.postman_collection.json) contains the captured API collection used as a reference
+- [docs/api.md](docs/api.md) documents the Grainfather cloud API used by the integration
 
 ## Lovelace Cards
 
