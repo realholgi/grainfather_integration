@@ -98,6 +98,21 @@
       "session_boil_time": {
         "name": "Boil Time"
       },
+      "session_pre_boil_gravity": {
+        "name": "Pre-Boil Gravity"
+      },
+      "session_conditioning_temperature": {
+        "name": "Conditioning Temperature"
+      },
+      "session_conditioning_duration": {
+        "name": "Conditioning Duration"
+      },
+      "session_ferment_volume": {
+        "name": "Fermentation Volume"
+      },
+      "session_priming_sugar": {
+        "name": "Priming Sugar"
+      },
       "fermdevice_temperature": {
         "name": "Temperature"
       },

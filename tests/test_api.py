@@ -368,6 +368,32 @@ def test_async_get_snapshot_recipe_fetch_failure_degrades_gracefully() -> None:
     assert snapshot.brew_sessions[0].recipe.abv is None
 
 
+def test_parse_batch_payload_retains_raw_conditioning_and_priming_fields() -> None:
+    payload = {
+        "id": 1378631,
+        "session_name": "Orange IPA #271",
+        "pre_boil_gravity": 1.041,
+        "conditioning_temperature": 4.0,
+        "conditioning_duration": 14,
+        "ferment_volume_actual": 22.5,
+        "priming_sugar_type": "Dextrose",
+        "priming_sugar_amount": 120.0,
+    }
+
+    batch = parse_batch_payload(payload)
+
+    assert batch is not None
+    # Raw fields the sensor readers consume must survive in raw_payload.
+    assert batch.raw_payload["pre_boil_gravity"] == 1.041
+    assert batch.raw_payload["conditioning_temperature"] == 4.0
+    assert batch.raw_payload["conditioning_duration"] == 14
+    assert batch.raw_payload["ferment_volume_actual"] == 22.5
+    assert batch.raw_payload["priming_sugar_type"] == "Dextrose"
+    assert batch.raw_payload["priming_sugar_amount"] == 120.0
+    # Missing keys are simply absent, so readers fall back to None.
+    assert "ferment_volume_est" not in batch.raw_payload
+
+
 def test_parse_fermentation_devices_payload() -> None:
     payload = [
         {

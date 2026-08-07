@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTemperature
+from homeassistant.const import UnitOfTemperature, UnitOfTime, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity import DeviceInfo
@@ -49,6 +49,33 @@ def _recipe_value(session: GrainfatherBrewSession, attr_name: str) -> Any:
     if recipe is None:
         return None
     return getattr(recipe, attr_name, None)
+
+
+def _raw_first(session: GrainfatherBrewSession, *keys: str) -> Any:
+    for key in keys:
+        value = session.raw_payload.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _raw_float(session: GrainfatherBrewSession, *keys: str) -> float | None:
+    value = _raw_first(session, *keys)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _priming_sugar_attributes(
+    session: GrainfatherBrewSession,
+    snapshot: GrainfatherSnapshot,
+) -> dict[str, Any]:
+    del snapshot
+    return {
+        "priming_sugar_type": _raw_first(session, "priming_sugar_type"),
+        "priming_sugar_amount": _raw_float(session, "priming_sugar_amount"),
+    }
 
 
 SESSION_SENSORS: tuple[GrainfatherSessionSensorDescription, ...] = (
@@ -134,6 +161,47 @@ SESSION_SENSORS: tuple[GrainfatherSessionSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTime.MINUTES,
         device_class=SensorDeviceClass.DURATION,
         value_fn=lambda s: _recipe_value(s, "boil_time"),
+    ),
+    GrainfatherSessionSensorDescription(
+        key="pre_boil_gravity",
+        translation_key="session_pre_boil_gravity",
+        suggested_display_precision=4,
+        value_fn=lambda s: _raw_float(s, "pre_boil_gravity", "preBoilGravity"),
+    ),
+    GrainfatherSessionSensorDescription(
+        key="conditioning_temperature",
+        translation_key="session_conditioning_temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        suggested_display_precision=1,
+        value_fn=lambda s: _raw_float(s, "conditioning_temperature", "conditioningTemperature"),
+    ),
+    GrainfatherSessionSensorDescription(
+        key="conditioning_duration",
+        translation_key="session_conditioning_duration",
+        native_unit_of_measurement=UnitOfTime.DAYS,
+        device_class=SensorDeviceClass.DURATION,
+        value_fn=lambda s: _raw_float(s, "conditioning_duration", "conditioningDuration"),
+    ),
+    GrainfatherSessionSensorDescription(
+        key="ferment_volume",
+        translation_key="session_ferment_volume",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
+        device_class=SensorDeviceClass.VOLUME,
+        suggested_display_precision=1,
+        value_fn=lambda s: _raw_float(
+            s,
+            "ferment_volume_actual",
+            "ferment_volume_est",
+            "fermentVolumeActual",
+            "fermentVolumeEst",
+        ),
+    ),
+    GrainfatherSessionSensorDescription(
+        key="priming_sugar",
+        translation_key="session_priming_sugar",
+        value_fn=lambda s: _raw_float(s, "priming_sugar_amount", "primingSugarAmount"),
+        attributes_fn=lambda s, snapshot: _priming_sugar_attributes(s, snapshot),
     ),
 )
 
