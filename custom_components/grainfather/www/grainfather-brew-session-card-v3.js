@@ -7,6 +7,10 @@ const CARD_I18N = {
     final_sg: 'Final gravity',
     style: 'Style',
     status: 'Status',
+    target_abv: 'Target ABV',
+    ibu: 'IBU',
+    color: 'Color',
+    batch_size: 'Batch size',
     batch_prefix: '#',
     id_label: 'ID',
     editor_pick_entity: 'Choose a Grainfather batch_number sensor in the card editor.',
@@ -19,6 +23,10 @@ const CARD_I18N = {
     final_sg: 'Gestosc koncowa',
     style: 'Styl',
     status: 'Status',
+    target_abv: 'Docelowe ABV',
+    ibu: 'IBU',
+    color: 'Kolor',
+    batch_size: 'Wielkosc warki',
     batch_prefix: '#',
     id_label: 'ID',
     editor_pick_entity: 'Wybierz sensor Grainfather batch_number w edytorze karty.',
@@ -203,6 +211,7 @@ class GrainfatherBrewSessionCardV3 extends LitElement {
       density_unit: 'default',
       show_image: true,
       show_batch_variant: true,
+      show_recipe_metrics: true,
       ...(config || {}),
     };
   }
@@ -231,6 +240,7 @@ class GrainfatherBrewSessionCardV3 extends LitElement {
       density_unit: 'default',
       show_image: true,
       show_batch_variant: true,
+      show_recipe_metrics: true,
     };
   }
 
@@ -273,6 +283,13 @@ class GrainfatherBrewSessionCardV3 extends LitElement {
             boolean: {},
           },
         },
+        {
+          name: 'show_recipe_metrics',
+          default: true,
+          selector: {
+            boolean: {},
+          },
+        },
       ],
       assertConfig: (config) => {
         if (config.entity !== undefined && typeof config.entity !== 'string') {
@@ -292,6 +309,9 @@ class GrainfatherBrewSessionCardV3 extends LitElement {
         if (schema.name === 'show_batch_variant') {
           return 'Show batch variant in header';
         }
+        if (schema.name === 'show_recipe_metrics') {
+          return 'Show recipe metrics';
+        }
         return undefined;
       },
       computeHelper: (schema) => {
@@ -306,6 +326,9 @@ class GrainfatherBrewSessionCardV3 extends LitElement {
         }
         if (schema.name === 'show_batch_variant') {
           return 'When enabled, header badge shows session and batch variant (session · variant).';
+        }
+        if (schema.name === 'show_recipe_metrics') {
+          return 'Display extra recipe metric tiles (Target ABV, IBU, Color, Batch size) when available.';
         }
         return undefined;
       },
@@ -339,6 +362,14 @@ class GrainfatherBrewSessionCardV3 extends LitElement {
       return fallback;
     }
     return entity.state;
+  }
+
+  _metricValue(suffix, unit) {
+    const raw = this._stateValue(suffix, '—');
+    if (raw === '—') {
+      return null;
+    }
+    return unit ? `${raw} ${unit}` : String(raw);
   }
 
   _lang() {
@@ -395,6 +426,16 @@ class GrainfatherBrewSessionCardV3 extends LitElement {
     const og = _formatGravityFromSg(this._stateValue('original_gravity'), densityUnit, true);
     const fg = _formatGravityFromSg(this._stateValue('final_gravity'), densityUnit, true);
 
+    const showRecipeMetrics = this._config?.show_recipe_metrics !== false;
+    const recipeMetricTiles = showRecipeMetrics
+      ? [
+          [this._t('target_abv'), this._metricValue('target_abv', '%vol'), _iconPercent()],
+          [this._t('ibu'), this._metricValue('ibu', 'IBU'), _iconFlask()],
+          [this._t('color'), this._metricValue('color_srm', 'SRM'), _iconDrop()],
+          [this._t('batch_size'), this._metricValue('batch_size', 'L'), _iconThermometer()],
+        ].filter(([, value]) => value != null)
+      : [];
+
     return html`
       <ha-card>
         <div class="header">
@@ -434,6 +475,13 @@ class GrainfatherBrewSessionCardV3 extends LitElement {
             <div class="metric-label">${_iconFlask()} ${this._t('status')}</div>
             <div class="metric-value white">${status}</div>
           </div>
+
+          ${recipeMetricTiles.map(([label, value, icon]) => html`
+            <div class="metric">
+              <div class="metric-label">${icon} ${label}</div>
+              <div class="metric-value white">${value}</div>
+            </div>
+          `)}
 
           <div class="metric full-width">
             <div class="metric-label">${_iconStyle()} ${this._t('style')}</div>

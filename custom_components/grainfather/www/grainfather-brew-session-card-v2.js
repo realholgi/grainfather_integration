@@ -152,6 +152,21 @@ class GrainfatherBrewSessionCard extends LitElement {
     .step-name { color: #e8ebef; font-weight: 500; }
     .step-meta { color: #8fa0b4; font-size: 0.75rem; text-align: right; }
 
+    .ingredient-group { margin-bottom: 8px; }
+    .ingredient-group:last-child { margin-bottom: 0; }
+
+    .ingredient-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      padding: 3px 0;
+      gap: 12px;
+    }
+
+    .ingredient-name { color: #e8ebef; font-weight: 500; }
+    .ingredient-detail { color: #8fa0b4; font-size: 0.75rem; text-align: right; }
+
     .error {
       padding: 16px;
       color: var(--error-color, red);
@@ -186,6 +201,8 @@ class GrainfatherBrewSessionCard extends LitElement {
       show_status_dates: true,
       show_fermentation_steps: true,
       show_batch_variant_name: true,
+      show_recipe_metrics: true,
+      show_recipe_ingredients: true,
       ...(config || {}),
     };
   }
@@ -216,6 +233,8 @@ class GrainfatherBrewSessionCard extends LitElement {
       show_status_dates: true,
       show_fermentation_steps: true,
       show_batch_variant_name: true,
+      show_recipe_metrics: true,
+      show_recipe_ingredients: true,
     };
   }
 
@@ -272,6 +291,20 @@ class GrainfatherBrewSessionCard extends LitElement {
             boolean: {},
           },
         },
+        {
+          name: 'show_recipe_metrics',
+          default: true,
+          selector: {
+            boolean: {},
+          },
+        },
+        {
+          name: 'show_recipe_ingredients',
+          default: true,
+          selector: {
+            boolean: {},
+          },
+        },
       ],
       assertConfig: (config) => {
         if (config.entity !== undefined && typeof config.entity !== 'string') {
@@ -297,6 +330,12 @@ class GrainfatherBrewSessionCard extends LitElement {
         if (schema.name === 'show_batch_variant_name') {
           return 'Show batch variant name';
         }
+        if (schema.name === 'show_recipe_metrics') {
+          return 'Show recipe metrics';
+        }
+        if (schema.name === 'show_recipe_ingredients') {
+          return 'Show recipe ingredients';
+        }
         return undefined;
       },
       computeHelper: (schema) => {
@@ -317,6 +356,12 @@ class GrainfatherBrewSessionCard extends LitElement {
         }
         if (schema.name === 'show_batch_variant_name') {
           return 'Display the Batch Variant stat tile.';
+        }
+        if (schema.name === 'show_recipe_metrics') {
+          return 'Display recipe metrics (IBU, color, calories, batch size, boil time) and extra brew-session fields.';
+        }
+        if (schema.name === 'show_recipe_ingredients') {
+          return 'Display recipe ingredients (fermentables, hops, yeasts, mash steps).';
         }
         return undefined;
       },
@@ -342,7 +387,12 @@ class GrainfatherBrewSessionCard extends LitElement {
     const ids = [entityId];
     if (entityId.endsWith('_batch_number')) {
       const base = entityId.slice(0, -'_batch_number'.length);
-      for (const suffix of ['abv', 'original_gravity', 'final_gravity', 'style', 'batch_variant_name']) {
+      for (const suffix of [
+        'abv', 'original_gravity', 'final_gravity', 'style', 'batch_variant_name',
+        'target_abv', 'ibu', 'color_srm', 'calories', 'batch_size', 'boil_time',
+        'pre_boil_gravity', 'conditioning_temperature', 'conditioning_duration',
+        'ferment_volume', 'priming_sugar', 'recipe_info',
+      ]) {
         const relatedId = `${base}_${suffix}`;
         if (this.hass.states[relatedId]) {
           ids.push(relatedId);
@@ -371,6 +421,19 @@ class GrainfatherBrewSessionCard extends LitElement {
       return fallback;
     }
     return entity.state;
+  }
+
+  _relatedAttrs(suffix) {
+    const entity = this._related(suffix);
+    return entity ? entity.attributes : undefined;
+  }
+
+  _metricValue(suffix, unit) {
+    const raw = this._stateValue(suffix, '—');
+    if (raw === '—') {
+      return null;
+    }
+    return unit ? `${raw} ${unit}` : String(raw);
   }
 
   render() {
@@ -414,6 +477,8 @@ class GrainfatherBrewSessionCard extends LitElement {
     const showStatusDates = this._config?.show_status_dates !== false;
     const showFermentationSteps = this._config?.show_fermentation_steps !== false;
     const showBatchVariantName = this._config?.show_batch_variant_name !== false;
+    const showRecipeMetrics = this._config?.show_recipe_metrics !== false;
+    const showRecipeIngredients = this._config?.show_recipe_ingredients !== false;
     const densityUnit = _resolveDensityUnit(this._config?.density_unit, attrs);
 
     const abvRaw = this._stateValue('abv');
@@ -422,6 +487,29 @@ class GrainfatherBrewSessionCard extends LitElement {
     const fg = _formatGravityFromSg(this._stateValue('final_gravity'), densityUnit, true);
     const style = this._stateValue('style');
     const statusColor = STATUS_COLORS[status] || '#9e9e9e';
+
+    const preBoilGravity = _formatGravityFromSg(this._stateValue('pre_boil_gravity'), densityUnit, true);
+    const recipeMetrics = [
+      ['Target ABV', this._metricValue('target_abv', '%vol')],
+      ['IBU', this._metricValue('ibu', 'IBU')],
+      ['Color', this._metricValue('color_srm', 'SRM')],
+      ['Calories', this._metricValue('calories', 'kcal')],
+      ['Batch size', this._metricValue('batch_size', 'L')],
+      ['Boil time', this._metricValue('boil_time', 'min')],
+      ['Pre-boil', preBoilGravity !== '—' ? preBoilGravity : null],
+      ['Cond. temp', this._metricValue('conditioning_temperature', '°C')],
+      ['Cond. days', this._metricValue('conditioning_duration', 'd')],
+      ['Ferment vol', this._metricValue('ferment_volume', 'L')],
+      ['Priming sugar', this._metricValue('priming_sugar', 'g')],
+    ].filter(([, value]) => value != null);
+
+    const recipeAttrs = this._relatedAttrs('recipe_info') || {};
+    const ingredientGroups = [
+      ['Fermentables', recipeAttrs.fermentables],
+      ['Hops', recipeAttrs.hops],
+      ['Yeasts', recipeAttrs.yeasts],
+      ['Mash steps', recipeAttrs.mash_steps],
+    ].filter(([, list]) => Array.isArray(list) && list.length > 0);
 
     return html`
       <ha-card>
@@ -512,6 +600,39 @@ class GrainfatherBrewSessionCard extends LitElement {
                 `)}
               `
             : nothing}
+
+          ${showRecipeMetrics && recipeMetrics.length > 0
+            ? html`
+                <hr class="divider" />
+                <div class="section-title">Recipe metrics</div>
+                <div class="stats">
+                  ${recipeMetrics.map(([label, value]) => html`
+                    <div class="stat">
+                      <div class="stat-label">${label}</div>
+                      <div class="stat-value small">${value}</div>
+                    </div>
+                  `)}
+                </div>
+              `
+            : nothing}
+
+          ${showRecipeIngredients && ingredientGroups.length > 0
+            ? html`
+                <hr class="divider" />
+                <div class="section-title">Recipe ingredients</div>
+                ${ingredientGroups.map(([label, list]) => html`
+                  <div class="ingredient-group">
+                    <div class="section-title">${label}</div>
+                    ${list.map((item) => html`
+                      <div class="ingredient-item">
+                        <span class="ingredient-name">${_ingredientName(item)}</span>
+                        <span class="ingredient-detail">${_ingredientDetail(item)}</span>
+                      </div>
+                    `)}
+                  </div>
+                `)}
+              `
+            : nothing}
         </div>
       </ha-card>
     `;
@@ -586,6 +707,27 @@ function _convertSgToPlato(sg) {
 
 function _convertSgToBrix(sg) {
   return (((182.4601 * sg) - 775.6821) * sg + 1262.7794) * sg - 669.5622;
+}
+
+function _ingredientName(item) {
+  if (item == null) return '—';
+  if (typeof item === 'string') return item;
+  return item.name || item.title || item.ingredient || item.type || '—';
+}
+
+function _ingredientDetail(item) {
+  if (item == null || typeof item !== 'object') return '';
+  const parts = [];
+  if (item.amount != null && item.amount !== '') {
+    parts.push(item.unit ? `${item.amount} ${item.unit}` : String(item.amount));
+  }
+  if (item.temperature != null && item.temperature !== '') {
+    parts.push(`${item.temperature} °C`);
+  }
+  if (item.time != null && item.time !== '') {
+    parts.push(`${item.time} min`);
+  }
+  return parts.join(' · ');
 }
 
 function _stepMeta(step) {

@@ -92,3 +92,103 @@ views:
                       - attribute:
                           grainfather_entity_type: fermentation_device
 
+  # ── Recipe & Metrics ─────────────────────────────────────────────────────────
+  # Ready-made view for the recipe-metric / extra brew-session sensors, recipe
+  # ingredients, and the fermentation-controller target temperature.
+  # Uses auto-entities to pick up the sensors dynamically by entity_id pattern,
+  # so it works regardless of how many brew sessions/devices you have.
+  - title: Recipe & Metrics
+    icon: mdi:cup-water
+    cards:
+      - type: custom:auto-entities
+        show_empty: false
+        card:
+          type: entities
+          title: Recipe Metrics
+        filter:
+          include:
+            - entity_id: sensor.grainfather_*_target_abv
+            - entity_id: sensor.grainfather_*_ibu
+            - entity_id: sensor.grainfather_*_color_srm
+            - entity_id: sensor.grainfather_*_calories
+            - entity_id: sensor.grainfather_*_batch_size
+            - entity_id: sensor.grainfather_*_boil_time
+          exclude:
+            - state: unknown
+            - state: unavailable
+
+      - type: custom:auto-entities
+        show_empty: false
+        card:
+          type: entities
+          title: Fermentation & Conditioning
+        filter:
+          include:
+            - entity_id: sensor.grainfather_*_pre_boil_gravity
+            - entity_id: sensor.grainfather_*_conditioning_temperature
+            - entity_id: sensor.grainfather_*_conditioning_duration
+            - entity_id: sensor.grainfather_*_ferment_volume
+            - entity_id: sensor.grainfather_*_priming_sugar
+          exclude:
+            - state: unknown
+            - state: unavailable
+
+      # Controller target temperature plotted next to the measured temperature.
+      # Both the measured `_temperature` and `_target_temperature` sensors carry
+      # grainfather_entity_type: fermentation_device, while the brew-session
+      # `_conditioning_temperature` sensor does not, so it is excluded here.
+      - type: custom:auto-entities
+        show_empty: false
+        card:
+          type: history-graph
+          title: Controller Target vs. Measured Temperature
+          hours_to_show: 48
+        card_param: entities
+        filter:
+          include:
+            - entity_id: sensor.grainfather_*_temperature
+              attributes:
+                grainfather_entity_type: fermentation_device
+
+      # Recipe ingredients live as attributes on the per-session recipe_info
+      # sensor. Point the entity below at one of your
+      # sensor.grainfather_<session>_recipe_info sensors.
+      - type: markdown
+        title: Recipe Ingredients
+        content: >
+          {% set s = 'sensor.grainfather_batch_01_recipe_info' %}
+
+          ## {{ states(s) }}
+
+          **ABV** {{ state_attr(s, 'abv') }} % &nbsp;·&nbsp;
+          **IBU** {{ state_attr(s, 'ibu') }} &nbsp;·&nbsp;
+          **SRM** {{ state_attr(s, 'srm') }}
+
+
+          ### Fermentables
+
+          {% for f in state_attr(s, 'fermentables') or [] %}
+          - {{ f.name }}{% if f.amount is defined %} — {{ f.amount }}{% endif %}
+          {% endfor %}
+
+
+          ### Hops
+
+          {% for h in state_attr(s, 'hops') or [] %}
+          - {{ h.name }}{% if h.amount is defined %} — {{ h.amount }}{% endif %}
+          {% endfor %}
+
+
+          ### Yeasts
+
+          {% for y in state_attr(s, 'yeasts') or [] %}
+          - {{ y.name }}
+          {% endfor %}
+
+
+          ### Mash steps
+
+          {% for m in state_attr(s, 'mash_steps') or [] %}
+          - {{ m.name }}{% if m.temperature is defined %} — {{ m.temperature }} °C{% endif %}{% if m.time is defined %} / {{ m.time }} min{% endif %}
+          {% endfor %}
+
