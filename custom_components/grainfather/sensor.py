@@ -22,6 +22,7 @@ from .api import (
     brew_session_device_identifier,
     brew_session_display_name,
     brew_session_unique_fragment,
+    serialize_recipe_ingredients,
 )
 from .const import BREW_SESSION_STATUS_NAME_BY_CODE, DOMAIN
 from .const import CONF_DEFAULT_DENSITY_UNIT, DEFAULT_DENSITY_UNIT
@@ -30,6 +31,7 @@ from .coordinator import GrainfatherDataUpdateCoordinator
 _MAX_EXPOSED_BATCH_HISTORY_POINTS = 20
 _MAX_EXPOSED_DEVICE_HISTORY_POINTS = 5
 _MAX_EXPOSED_NOTES_CHARS = 400
+_MAX_EXPOSED_INGREDIENTS = 30
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -76,6 +78,26 @@ def _priming_sugar_attributes(
         "priming_sugar_type": _raw_first(session, "priming_sugar_type"),
         "priming_sugar_amount": _raw_float(session, "priming_sugar_amount"),
     }
+
+
+def _recipe_info_attributes(
+    session: GrainfatherBrewSession,
+    snapshot: GrainfatherSnapshot,
+) -> dict[str, Any]:
+    del snapshot
+    recipe = session.recipe
+    attributes: dict[str, Any] = {
+        "grainfather_entity_type": "recipe",
+        "recipe_id": recipe.recipe_id if recipe is not None else session.recipe_id,
+        "recipe_name": (recipe.name if recipe is not None else None) or session.recipe_name,
+        "abv": recipe.abv if recipe is not None else None,
+        "ibu": recipe.ibu if recipe is not None else None,
+        "srm": recipe.srm if recipe is not None else None,
+        "og": recipe.og if recipe is not None else None,
+        "fg": recipe.fg if recipe is not None else None,
+    }
+    attributes.update(serialize_recipe_ingredients(recipe, _MAX_EXPOSED_INGREDIENTS))
+    return attributes
 
 
 SESSION_SENSORS: tuple[GrainfatherSessionSensorDescription, ...] = (
@@ -202,6 +224,12 @@ SESSION_SENSORS: tuple[GrainfatherSessionSensorDescription, ...] = (
         translation_key="session_priming_sugar",
         value_fn=lambda s: _raw_float(s, "priming_sugar_amount", "primingSugarAmount"),
         attributes_fn=lambda s, snapshot: _priming_sugar_attributes(s, snapshot),
+    ),
+    GrainfatherSessionSensorDescription(
+        key="recipe_info",
+        translation_key="session_recipe_info",
+        value_fn=lambda s: (s.recipe.name if s.recipe is not None else None) or s.recipe_name,
+        attributes_fn=lambda s, snapshot: _recipe_info_attributes(s, snapshot),
     ),
 )
 

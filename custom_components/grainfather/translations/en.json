@@ -113,6 +113,9 @@
       "session_priming_sugar": {
         "name": "Priming Sugar"
       },
+      "session_recipe_info": {
+        "name": "Recipe"
+      },
       "fermdevice_temperature": {
         "name": "Temperature"
       },

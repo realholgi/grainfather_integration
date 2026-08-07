@@ -698,6 +698,27 @@ def _merge_recipe(
     )
 
 
+def serialize_recipe_ingredients(
+    recipe: GrainfatherRecipe | None,
+    max_items: int,
+) -> dict[str, list[dict[str, Any]]]:
+    """Return capped ingredient lists for exposure as entity attributes."""
+    if recipe is None:
+        return {
+            "fermentables": [],
+            "hops": [],
+            "yeasts": [],
+            "mash_steps": [],
+        }
+
+    return {
+        "fermentables": [dict(item) for item in recipe.fermentables[:max_items]],
+        "hops": [dict(item) for item in recipe.hops[:max_items]],
+        "yeasts": [dict(item) for item in recipe.yeasts[:max_items]],
+        "mash_steps": [dict(item) for item in recipe.mash_steps[:max_items]],
+    }
+
+
 def brew_session_device_identifier(session: GrainfatherBrewSession) -> str:
     return f"batch_{brew_session_unique_fragment(session)}"
 
@@ -833,7 +854,6 @@ def parse_fermentation_device_history_points(
                 "last_specific_gravity",
             )
         )
-
         target_temperature = _to_float(
             _first_value(item, "target_temperature", "targetTemperature")
         )

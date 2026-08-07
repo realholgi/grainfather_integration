@@ -15,6 +15,7 @@ from custom_components.grainfather.api import (
     parse_fermentation_device_history_points,
     parse_fermentation_devices_payload,
     parse_recipe_payload,
+    serialize_recipe_ingredients,
 )
 from custom_components.grainfather.const import (
     brew_session_status_name,
@@ -366,6 +367,30 @@ def test_async_get_snapshot_recipe_fetch_failure_degrades_gracefully() -> None:
     # Embedded (limited) recipe is kept; metrics stay None without raising.
     assert snapshot.brew_sessions[0].recipe is not None
     assert snapshot.brew_sessions[0].recipe.abv is None
+
+
+def test_serialize_recipe_ingredients_caps_and_handles_none() -> None:
+    payload = {
+        "id": 1,
+        "name": "IPA",
+        "fermentables": [{"name": f"F{i}"} for i in range(50)],
+        "hops": [{"name": "Citra"}],
+        "yeasts": [],
+        "mash_steps": [{"name": "Mash", "temperature": 66}],
+    }
+    recipe = parse_recipe_payload(payload)
+
+    serialized = serialize_recipe_ingredients(recipe, 30)
+
+    assert len(serialized["fermentables"]) == 30
+    assert serialized["fermentables"][0]["name"] == "F0"
+    assert serialized["hops"] == [{"name": "Citra", "amount": None, "aa": None, "time": None, "ibu": None, "order": None}]
+    assert serialized["yeasts"] == []
+    assert serialized["mash_steps"][0]["temperature"] == 66
+
+    # None recipe yields empty lists (empty-list handling).
+    empty = serialize_recipe_ingredients(None, 30)
+    assert empty == {"fermentables": [], "hops": [], "yeasts": [], "mash_steps": []}
 
 
 def test_parse_batch_payload_retains_raw_conditioning_and_priming_fields() -> None:

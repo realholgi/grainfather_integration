@@ -14,6 +14,7 @@ If this project helps your brewing workflow, you can support development here:
 - Brew session entities with batch, gravity, style, recipe image, and batch variant data
 - Recipe metric sensors per brew session: target ABV, IBU, color (SRM), calories, batch size, and boil time
 - Extra brew-session sensors: pre-boil gravity, conditioning temperature/duration, fermentation volume, and priming sugar
+- Recipe ingredients (fermentables, hops, yeasts, mash steps) exposed as attributes on a per-session recipe sensor
 - Brew session attributes including `condition_date`, `fermentation_start_date`, and `created_at`
 - Fermentation device temperature and gravity sensors, plus a target-temperature sensor for fermentation controllers
 - History data exposed on brew session attributes
