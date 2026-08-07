@@ -116,6 +116,7 @@ class GrainfatherHistoryPoint:
     temperature: float | None
     specific_gravity: float | None
     raw_payload: dict[str, Any]
+    target_temperature: float | None = None
 
 
 @dataclass(slots=True)
@@ -833,7 +834,11 @@ def parse_fermentation_device_history_points(
             )
         )
 
-        if temperature is None and specific_gravity is None:
+        target_temperature = _to_float(
+            _first_value(item, "target_temperature", "targetTemperature")
+        )
+
+        if temperature is None and specific_gravity is None and target_temperature is None:
             continue
 
         points.append(
@@ -844,6 +849,7 @@ def parse_fermentation_device_history_points(
                 temperature=temperature,
                 specific_gravity=specific_gravity,
                 raw_payload=deepcopy(item),
+                target_temperature=target_temperature,
             )
         )
 

@@ -584,6 +584,32 @@ def test_parse_fermentation_device_history_points() -> None:
     assert points[0].specific_gravity == 1.011
 
 
+def test_parse_fermentation_device_history_points_reads_target_temperature() -> None:
+    payload = [
+        {
+            "timestamp": "2026-04-09T10:00:00Z",
+            "temperature": "18.0",
+            "target_temperature": "19.0",
+            "brew_session_id": 1378631,
+        },
+        {
+            # Controller reading with only a target temperature must be kept.
+            "timestamp": "2026-04-09T11:00:00Z",
+            "target_temperature": "19.5",
+            "brew_session_id": 1378631,
+        },
+    ]
+
+    points = parse_fermentation_device_history_points(payload, 42)
+
+    assert len(points) == 2
+    assert points[0].temperature == 18.0
+    assert points[0].target_temperature == 19.0
+    assert points[1].temperature is None
+    assert points[1].specific_gravity is None
+    assert points[1].target_temperature == 19.5
+
+
 def test_async_get_fermentation_device_history_uses_expected_query_params() -> None:
     class FakeGrainfatherApiClient(GrainfatherApiClient):
         def __init__(self) -> None:

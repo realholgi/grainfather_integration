@@ -217,6 +217,7 @@ def _serialize_history_points(
             "timestamp": point.timestamp,
             "temperature": point.temperature,
             "specific_gravity": point.specific_gravity,
+            "target_temperature": point.target_temperature,
         }
         for point in recent_points
     ]
@@ -464,6 +465,18 @@ def _build_sensor_entities(
                 GrainfatherFermDeviceGravitySensor(coordinator, entry, device.device_id)
             )
 
+        if device.fermentation_device_type_id == 30:
+            target_temp_unique_id = (
+                f"{entry.entry_id}_fermdevice_{device.device_id}_target_temperature"
+            )
+            if target_temp_unique_id not in known_unique_ids:
+                known_unique_ids.add(target_temp_unique_id)
+                entities.append(
+                    GrainfatherFermDeviceTargetTemperatureSensor(
+                        coordinator, entry, device.device_id
+                    )
+                )
+
     return entities
 
 
@@ -695,5 +708,68 @@ class GrainfatherFermDeviceGravitySensor(
             ),
             "history_points": _serialize_history_points(history, _MAX_EXPOSED_DEVICE_HISTORY_POINTS),
             "history_points_count": len(history),
+        }
+
+
+class GrainfatherFermDeviceTargetTemperatureSensor(
+    CoordinatorEntity[GrainfatherDataUpdateCoordinator],
+    SensorEntity,
+):
+    _attr_translation_key = "fermdevice_target_temperature"
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_suggested_display_precision = 1
+
+    def __init__(
+        self,
+        coordinator: GrainfatherDataUpdateCoordinator,
+        entry: ConfigEntry,
+        device_id: int | None,
+    ) -> None:
+        super().__init__(coordinator)
+        self._device_id = device_id
+        self._attr_has_entity_name = True
+        self._attr_unique_id = f"{entry.entry_id}_fermdevice_{device_id}_target_temperature"
+
+    @property
+    def _device(self) -> GrainfatherFermentationDevice | None:
+        for device in self.coordinator.data.fermentation_devices:
+            if device.device_id == self._device_id:
+                return device
+        return None
+
+    @property
+    def available(self) -> bool:
+        return self._device is not None
+
+    @property
+    def native_value(self) -> Any:
+        device = self._device
+        if device is None:
+            return None
+        history = self.coordinator.data.fermentation_history_by_device_id.get(
+            device.device_id or -1,
+            tuple(),
+        )
+        return _last_history_value(history, "target_temperature")
+
+    @property
+    def device_info(self) -> DeviceInfo | None:
+        device = self._device
+        if device is None:
+            return None
+        return _ferm_device_info(device, self.coordinator.data)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        device = self._device
+        if device is None:
+            return None
+        return {
+            "grainfather_entity_type": "fermentation_device",
+            "device_id": device.device_id,
+            "last_heard": device.last_heard,
+            "linked_brew_session_id": device.linked_brew_session_id,
+            "linked_brew_session_name": device.linked_brew_session_name,
         }
 
