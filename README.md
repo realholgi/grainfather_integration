@@ -56,6 +56,137 @@ The implementation is based on the API shape described in [docs/api.md](docs/api
 
 See [docs/api.md](docs/api.md) for the full Grainfather cloud API reference.
 
+### Brew Session & Recipe Sensors
+
+Each brew session becomes a Home Assistant device with the following sensors. Entity IDs
+follow the pattern `sensor.grainfather_<session>_<key>`, where `<session>` is the slug Home
+Assistant generates from the device name (for example `sensor.grainfather_batch_01_ibu`).
+Look up the exact slugs under **Settings > Devices & Services > Grainfather** or in
+**Developer Tools > States** (filter for `grainfather`).
+
+Recipe metric sensors:
+
+| Sensor key | Meaning | Unit |
+| --- | --- | --- |
+| `target_abv` | Recipe target ABV | `%vol` |
+| `ibu` | Bitterness | `IBU` |
+| `color_srm` | Beer color | `SRM` |
+| `calories` | Estimated calories | `kcal` |
+| `batch_size` | Recipe batch size | litres |
+| `boil_time` | Boil time | minutes |
+
+Extra brew-session sensors:
+
+| Sensor key | Meaning | Unit |
+| --- | --- | --- |
+| `pre_boil_gravity` | Pre-boil gravity | (gravity) |
+| `conditioning_temperature` | Conditioning temperature | °C |
+| `conditioning_duration` | Conditioning duration | days |
+| `ferment_volume` | Fermentation volume | litres |
+| `priming_sugar` | Priming sugar amount, with `priming_sugar_type` / `priming_sugar_amount` attributes | (amount) |
+
+A sensor reports `unknown` when the underlying field is not present for that session or
+recipe yet (for example `target_abv` needs recipe data, and the `conditioning_*` sensors
+need those raw fields).
+
+### Recipe Ingredients (attributes)
+
+Each brew session also exposes a `recipe_info` sensor
+(`sensor.grainfather_<session>_recipe_info`). Its state is the recipe name, and the recipe
+details are exposed as **attributes**:
+
+- `abv`, `ibu`, `srm`, `og`, `fg`
+- `fermentables`, `hops`, `yeasts`, `mash_steps` — ingredient lists (each capped at 30 items)
+
+Because these are attributes, a normal card only shows the count/name. Use a Markdown card
+with a Jinja template to render them (see the example below). The exact keys inside each
+ingredient entry come straight from the Grainfather payload, so inspect one in
+**Developer Tools > States** to see fields like `name` and `amount`.
+
+### Fermentation Controller Target Temperature
+
+For fermentation controllers (devices where `fermentation_device_type_id == 30`), an extra
+`sensor.grainfather_<device>_target_temperature` (°C) is created. It pairs with the existing
+temperature and gravity sensors on the controller.
+
+### Using the New Sensors
+
+Show one brew session's metrics on an **Entities** card:
+
+```yaml
+type: entities
+title: Batch 01 – Recipe & Metrics
+entities:
+  - sensor.grainfather_batch_01_target_abv
+  - sensor.grainfather_batch_01_ibu
+  - sensor.grainfather_batch_01_color_srm
+  - sensor.grainfather_batch_01_calories
+  - sensor.grainfather_batch_01_batch_size
+  - sensor.grainfather_batch_01_boil_time
+  - sensor.grainfather_batch_01_pre_boil_gravity
+  - sensor.grainfather_batch_01_conditioning_temperature
+  - sensor.grainfather_batch_01_conditioning_duration
+  - sensor.grainfather_batch_01_ferment_volume
+  - sensor.grainfather_batch_01_priming_sugar
+```
+
+Show a single metric as a **Gauge**:
+
+```yaml
+type: gauge
+name: ABV
+entity: sensor.grainfather_batch_01_target_abv
+min: 0
+max: 12
+```
+
+Render recipe ingredients with a **Markdown** card (attributes are read via `state_attr`):
+
+```yaml
+type: markdown
+content: |
+  ## {{ states('sensor.grainfather_batch_01_recipe_info') }}
+  **ABV** {{ state_attr('sensor.grainfather_batch_01_recipe_info','abv') }} %
+  **IBU** {{ state_attr('sensor.grainfather_batch_01_recipe_info','ibu') }}
+
+  ### Hops
+  {% for h in state_attr('sensor.grainfather_batch_01_recipe_info','hops') %}
+  - {{ h.name }} {{ h.amount if h.amount is defined else '' }}
+  {% endfor %}
+
+  ### Fermentables
+  {% for f in state_attr('sensor.grainfather_batch_01_recipe_info','fermentables') %}
+  - {{ f.name }}
+  {% endfor %}
+```
+
+Plot the controller target temperature next to its measured temperature with a
+**history-graph**:
+
+```yaml
+type: history-graph
+title: Fermentation Controller
+hours_to_show: 48
+entities:
+  - sensor.grainfather_conical_temperature
+  - sensor.grainfather_conical_target_temperature
+```
+
+Alert when the controller drifts away from its target temperature:
+
+```yaml
+alias: Fermentation temp drift alert
+trigger:
+  - platform: template
+    value_template: >
+      {{ (states('sensor.grainfather_conical_temperature') | float(0)
+          - states('sensor.grainfather_conical_target_temperature') | float(0)) | abs > 1.5 }}
+action:
+  - service: notify.mobile_app_phone
+    data:
+      message: "Fermentation temp is off target!"
+```
+
 ## Service Actions
 
 The integration registers these service actions:
