@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -15,12 +15,22 @@ from .api import (
 )
 from .const import (
     BREW_SESSION_STATUS_COMPLETED,
+    CONF_ACTIVE_SCAN_INTERVAL,
     CONF_INCLUDE_COMPLETED_SESSIONS,
     CONF_SCAN_INTERVAL,
+    DEFAULT_ACTIVE_SCAN_INTERVAL,
     DEFAULT_INCLUDE_COMPLETED_SESSIONS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    POLL_BOOST_SECONDS,
 )
+from .polling import _clamp_interval, compute_update_interval, snapshot_is_active
+
+__all__ = [
+    "GrainfatherDataUpdateCoordinator",
+    "compute_update_interval",
+    "snapshot_is_active",
+]
 
 LOGGER = logging.getLogger(__name__)
 
@@ -32,15 +42,28 @@ class GrainfatherDataUpdateCoordinator(DataUpdateCoordinator[GrainfatherSnapshot
         api: GrainfatherApiClient,
         entry: ConfigEntry,
     ) -> None:
-        interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        self._idle_interval = _clamp_interval(
+            entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        )
+        self._active_interval = _clamp_interval(
+            entry.options.get(CONF_ACTIVE_SCAN_INTERVAL, DEFAULT_ACTIVE_SCAN_INTERVAL)
+        )
+        self._boost_until: datetime | None = None
         super().__init__(
             hass,
             logger=LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=interval),
+            update_interval=timedelta(seconds=self._idle_interval),
         )
         self.api = api
         self.entry = entry
+
+    def note_user_action(self) -> None:
+        """Record a user action: boost the poll cadence and refresh immediately."""
+        self._boost_until = datetime.now(timezone.utc) + timedelta(
+            seconds=POLL_BOOST_SECONDS
+        )
+        self.hass.async_create_task(self.async_request_refresh())
 
     async def _async_update_data(self) -> GrainfatherSnapshot:
         try:
@@ -56,11 +79,24 @@ class GrainfatherDataUpdateCoordinator(DataUpdateCoordinator[GrainfatherSnapshot
                 len(snapshot.brew_sessions),
                 len(snapshot.fermentation_devices),
             )
+            self._reschedule(snapshot)
             return snapshot
         except GrainfatherAuthenticationError as err:
             raise UpdateFailed(f"Authentication failed: {err}") from err
         except GrainfatherApiError as err:
             raise UpdateFailed(f"Unable to fetch Grainfather data: {err}") from err
+
+    def _reschedule(self, snapshot: GrainfatherSnapshot) -> None:
+        """Pick the next poll interval based on activity and any active boost."""
+        now = datetime.now(timezone.utc)
+        boosted = self._boost_until is not None and now < self._boost_until
+        self.update_interval = compute_update_interval(
+            snapshot,
+            self._active_interval,
+            self._idle_interval,
+            boosted=boosted,
+            now=now,
+        )
 
 
 def _without_completed_sessions(snapshot: GrainfatherSnapshot) -> GrainfatherSnapshot:

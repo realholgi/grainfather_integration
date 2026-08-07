@@ -153,7 +153,7 @@ class GrainfatherSessionStatusSelect(
 
         status = normalize_brew_session_status(option)
         await self.coordinator.api.async_set_brew_session_status(recipe_id, int(batch_id), status)
-        await self.coordinator.async_request_refresh()
+        self.coordinator.note_user_action()
 
 
 class GrainfatherFermentationStepRampSelect(
@@ -243,4 +243,4 @@ class GrainfatherFermentationStepRampSelect(
             self._step_index,
             is_ramp_step=(option == "on"),
         )
-        await self.coordinator.async_request_refresh()
+        self.coordinator.note_user_action()

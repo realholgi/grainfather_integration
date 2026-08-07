@@ -18,14 +18,21 @@ CONF_DELTA_TEMPERATURE = "delta_temperature"
 CONF_IS_RAMP_STEP = "is_ramp_step"
 CONF_FINISH_TEMPERATURE = "finish_temperature"
 CONF_SCAN_INTERVAL = "scan_interval"
+CONF_ACTIVE_SCAN_INTERVAL = "active_scan_interval"
 CONF_INCLUDE_COMPLETED_SESSIONS = "include_completed_sessions"
 CONF_DEFAULT_DENSITY_UNIT = "default_density_unit"
 
 DEFAULT_SCAN_INTERVAL = 300  # seconds
+DEFAULT_ACTIVE_SCAN_INTERVAL = 60  # seconds
 DEFAULT_INCLUDE_COMPLETED_SESSIONS = False
 DEFAULT_DENSITY_UNIT = "sg"
 MIN_SCAN_INTERVAL = 60
 MAX_SCAN_INTERVAL = 3600
+
+# Brew session statuses that indicate an active brew, used to poll faster.
+ACTIVE_BREW_SESSION_STATUSES = (10, 20)  # brewing, fermenting
+# How long to keep polling at the active interval after a user action.
+POLL_BOOST_SECONDS = 120
 
 BREW_SESSION_STATUS_COMPLETED = 40
 

@@ -23,11 +23,13 @@
       "init": {
         "title": "Grainfather options",
         "data": {
-          "scan_interval": "Update interval (seconds)",
+          "scan_interval": "Idle update interval (seconds)",
+          "active_scan_interval": "Active update interval (seconds)",
           "include_completed_sessions": "Include completed brew sessions"
         },
         "data_description": {
-          "scan_interval": "How often (in seconds) to poll the Grainfather cloud API. Minimum 60 s, maximum 3600 s.",
+          "scan_interval": "How often (in seconds) to poll the Grainfather cloud API while idle (no active brew). Minimum 60 s, maximum 3600 s.",
+          "active_scan_interval": "How often (in seconds) to poll while a brew is actively brewing or fermenting, and briefly after you make a change. Minimum 60 s, maximum 3600 s.",
           "include_completed_sessions": "If disabled, completed sessions are filtered out from integration data and entities become unavailable."
         }
       }

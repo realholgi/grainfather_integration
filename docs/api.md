@@ -414,6 +414,29 @@ single snapshot the integration polls on a schedule:
 4. For each device, fetch the last 90 days of history and index the points both by
    device ID and by linked brew session (batch) ID.
 
+### Adaptive interval
+
+The Grainfather cloud API is REST-only (no websocket, MQTT, or webhook is exposed to
+third parties), so the integration cannot receive true server-side push. Instead of a
+single fixed cadence, `GrainfatherDataUpdateCoordinator` chooses its next poll interval
+after every refresh based on the current snapshot:
+
+- **Active interval** (`active_scan_interval`, default 60 s) — used when the snapshot is
+  "active": any brew session has status `10` (brewing) or `20` (fermenting), or a
+  fermentation controller is `is_controller_linked` and its `last_heard` timestamp is
+  recent (within one hour).
+- **Idle interval** (`scan_interval`, default 300 s) — used otherwise, to keep load on
+  the Grainfather cloud and Home Assistant low.
+- **Post-action boost** — after any write (a service call or a number/select entity
+  write) the coordinator triggers an immediate refresh and stays on the active interval
+  for a short window (120 s) so the change and any device-side follow-up surface quickly.
+
+Both intervals are clamped to `MIN_SCAN_INTERVAL` (60 s) / `MAX_SCAN_INTERVAL` (3600 s).
+The activity decision (`snapshot_is_active`) and interval choice (`compute_update_interval`)
+live in `custom_components/grainfather/polling.py` as pure, unit-tested functions. The
+integration remains classified `iot_class: cloud_polling` — adaptive polling is still
+polling.
+
 ## Service actions
 
 The integration exposes these Home Assistant services (see

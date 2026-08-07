@@ -190,7 +190,7 @@ class GrainfatherFermentationStepDurationNumber(
             self._step_index,
             duration_minutes,
         )
-        await self.coordinator.async_request_refresh()
+        self.coordinator.note_user_action()
 
 
 class GrainfatherFermentationStepTemperatureNumber(
@@ -280,7 +280,7 @@ class GrainfatherFermentationStepTemperatureNumber(
             self._step_index,
             temperature=float(value),
         )
-        await self.coordinator.async_request_refresh()
+        self.coordinator.note_user_action()
 
 
 class GrainfatherFermentationStepFinishTemperatureNumber(
@@ -371,4 +371,4 @@ class GrainfatherFermentationStepFinishTemperatureNumber(
             finish_temperature=float(value),
             set_finish_temperature=True,
         )
-        await self.coordinator.async_request_refresh()
+        self.coordinator.note_user_action()

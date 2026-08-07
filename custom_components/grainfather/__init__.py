@@ -397,7 +397,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 step_index,
                 temperature=new_temperature,
             )
-            await coordinator.async_request_refresh()
+            coordinator.note_user_action()
 
         hass.services.async_register(
             DOMAIN,
@@ -435,7 +435,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 step_index,
                 duration_minutes=new_duration,
             )
-            await coordinator.async_request_refresh()
+            coordinator.note_user_action()
 
         hass.services.async_register(
             DOMAIN,
@@ -477,7 +477,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 step_index,
                 duration_minutes=new_duration,
             )
-            await coordinator.async_request_refresh()
+            coordinator.note_user_action()
 
         hass.services.async_register(
             DOMAIN,
@@ -505,7 +505,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 brew_session_id,
                 status,
             )
-            await coordinator.async_request_refresh()
+            coordinator.note_user_action()
 
         hass.services.async_register(
             DOMAIN,
@@ -528,7 +528,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 brew_session_id,
                 service_call.data[CONF_FERMENTATION_STEPS],
             )
-            await coordinator.async_request_refresh()
+            coordinator.note_user_action()
 
         hass.services.async_register(
             DOMAIN,
@@ -557,7 +557,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 finish_temperature=service_call.data.get(CONF_FINISH_TEMPERATURE),
                 set_finish_temperature=CONF_FINISH_TEMPERATURE in service_call.data,
             )
-            await coordinator.async_request_refresh()
+            coordinator.note_user_action()
 
         hass.services.async_register(
             DOMAIN,
@@ -584,7 +584,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 finish_temperature=None,
                 set_finish_temperature=True,
             )
-            await coordinator.async_request_refresh()
+            coordinator.note_user_action()
 
         hass.services.async_register(
             DOMAIN,

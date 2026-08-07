@@ -9,11 +9,13 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import GrainfatherApiClient, GrainfatherAuthenticationError, GrainfatherApiError
 from .const import (
+    CONF_ACTIVE_SCAN_INTERVAL,
     CONF_DEFAULT_DENSITY_UNIT,
     CONF_EMAIL,
     CONF_INCLUDE_COMPLETED_SESSIONS,
     CONF_PASSWORD,
     CONF_SCAN_INTERVAL,
+    DEFAULT_ACTIVE_SCAN_INTERVAL,
     DEFAULT_DENSITY_UNIT,
     DEFAULT_INCLUDE_COMPLETED_SESSIONS,
     DEFAULT_SCAN_INTERVAL,
@@ -79,6 +81,9 @@ class GrainfatherOptionsFlow(config_entries.OptionsFlow):
         current_interval = self.config_entry.options.get(
             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
         )
+        current_active_interval = self.config_entry.options.get(
+            CONF_ACTIVE_SCAN_INTERVAL, DEFAULT_ACTIVE_SCAN_INTERVAL
+        )
         include_completed = self.config_entry.options.get(
             CONF_INCLUDE_COMPLETED_SESSIONS,
             DEFAULT_INCLUDE_COMPLETED_SESSIONS,
@@ -93,6 +98,13 @@ class GrainfatherOptionsFlow(config_entries.OptionsFlow):
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_SCAN_INTERVAL, default=current_interval): vol.All(
+                        vol.Coerce(int),
+                        vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
+                    ),
+                    vol.Required(
+                        CONF_ACTIVE_SCAN_INTERVAL,
+                        default=current_active_interval,
+                    ): vol.All(
                         vol.Coerce(int),
                         vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
                     ),

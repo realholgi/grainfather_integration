@@ -41,7 +41,8 @@ If this project helps your brewing workflow, you can support development here:
 
 ## Exposed Data
 
-The integration currently polls the Grainfather cloud API and exposes:
+The integration polls the Grainfather cloud API (with a state-aware adaptive
+interval, see [Adaptive Polling](#adaptive-polling)) and exposes:
 
 - Brew sessions
 - Fermentation devices
@@ -55,6 +56,25 @@ The implementation is based on the API shape described in [docs/api.md](docs/api
 - `/api/equipment/fermentation-devices`
 
 See [docs/api.md](docs/api.md) for the full Grainfather cloud API reference.
+
+### Adaptive Polling
+
+The Grainfather cloud API is REST-only, so the integration polls it on a schedule.
+Instead of a single fixed cadence, it uses **state-aware adaptive polling**:
+
+- While a brew session is **brewing** or **fermenting** (or a fermentation controller
+  is linked and was heard from recently), it polls at the faster **active interval**
+  (default 60 s).
+- Otherwise it polls at the slower **idle interval** (the `scan_interval` option,
+  default 300 s), which keeps load on the Grainfather cloud and Home Assistant low.
+- Right after you make a change (a service call or a number/select write), it performs
+  an **immediate refresh** and briefly stays on the active interval so the change — and
+  any device-side follow-up — shows up quickly.
+
+Both intervals are clamped to 60–3600 s and are configurable under
+**Settings > Devices & Services > Grainfather > Configure** (the *Idle update interval*
+and *Active update interval* options). Entities update within Home Assistant as soon as a
+poll completes.
 
 ### Brew Session & Recipe Sensors
 
@@ -351,7 +371,7 @@ These examples reflect the current card behavior and layout options documented a
 
 - The Grainfather cloud API is not officially documented here, so some payload assumptions are based on observed responses.
 - Test coverage is focused on payload parsing and client behavior, not full Home Assistant integration runtime behavior.
-- The integration currently uses polling rather than push updates.
+- The Grainfather cloud API is REST-only and exposes no push channel (no websocket, MQTT, or webhook) to third parties, so the integration is `cloud_polling`. It compensates with state-aware adaptive polling (see below) rather than true server-side push.
 
 ## Roadmap
 
