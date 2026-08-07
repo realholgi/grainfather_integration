@@ -12,6 +12,7 @@ If this project helps your brewing workflow, you can support development here:
 
 - Config flow with Grainfather email and password
 - Brew session entities with batch, gravity, style, recipe image, and batch variant data
+- Recipe metric sensors per brew session: target ABV, IBU, color (SRM), calories, batch size, and boil time
 - Brew session attributes including `condition_date`, `fermentation_start_date`, and `created_at`
 - Fermentation device temperature and gravity sensors
 - History data exposed on brew session attributes

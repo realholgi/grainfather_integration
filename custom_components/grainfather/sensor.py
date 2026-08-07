@@ -44,6 +44,13 @@ def _calc_abv(og: float | None, fg: float | None) -> float | None:
     return round((og - fg) * 131.25, 2)
 
 
+def _recipe_value(session: GrainfatherBrewSession, attr_name: str) -> Any:
+    recipe = session.recipe
+    if recipe is None:
+        return None
+    return getattr(recipe, attr_name, None)
+
+
 SESSION_SENSORS: tuple[GrainfatherSessionSensorDescription, ...] = (
     GrainfatherSessionSensorDescription(
         key="batch_number",
@@ -84,6 +91,49 @@ SESSION_SENSORS: tuple[GrainfatherSessionSensorDescription, ...] = (
         key="recipe_image_url",
         translation_key="session_recipe_image_url",
         value_fn=lambda s: s.recipe_image_url,
+    ),
+    GrainfatherSessionSensorDescription(
+        key="target_abv",
+        translation_key="session_target_abv",
+        native_unit_of_measurement="%vol",
+        suggested_display_precision=1,
+        value_fn=lambda s: _recipe_value(s, "abv"),
+    ),
+    GrainfatherSessionSensorDescription(
+        key="ibu",
+        translation_key="session_ibu",
+        native_unit_of_measurement="IBU",
+        suggested_display_precision=0,
+        value_fn=lambda s: _recipe_value(s, "ibu"),
+    ),
+    GrainfatherSessionSensorDescription(
+        key="color_srm",
+        translation_key="session_color_srm",
+        native_unit_of_measurement="SRM",
+        suggested_display_precision=1,
+        value_fn=lambda s: _recipe_value(s, "srm"),
+    ),
+    GrainfatherSessionSensorDescription(
+        key="calories",
+        translation_key="session_calories",
+        native_unit_of_measurement="kcal",
+        suggested_display_precision=0,
+        value_fn=lambda s: _recipe_value(s, "calories"),
+    ),
+    GrainfatherSessionSensorDescription(
+        key="batch_size",
+        translation_key="session_batch_size",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
+        device_class=SensorDeviceClass.VOLUME,
+        suggested_display_precision=1,
+        value_fn=lambda s: _recipe_value(s, "batch_size"),
+    ),
+    GrainfatherSessionSensorDescription(
+        key="boil_time",
+        translation_key="session_boil_time",
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        device_class=SensorDeviceClass.DURATION,
+        value_fn=lambda s: _recipe_value(s, "boil_time"),
     ),
 )
 

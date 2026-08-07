@@ -80,6 +80,24 @@
       "session_recipe_image_url": {
         "name": "Recipe Image"
       },
+      "session_target_abv": {
+        "name": "Target ABV"
+      },
+      "session_ibu": {
+        "name": "IBU"
+      },
+      "session_color_srm": {
+        "name": "Color"
+      },
+      "session_calories": {
+        "name": "Calories"
+      },
+      "session_batch_size": {
+        "name": "Batch Size"
+      },
+      "session_boil_time": {
+        "name": "Boil Time"
+      },
       "fermdevice_temperature": {
         "name": "Temperature"
       },
