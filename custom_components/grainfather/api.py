@@ -26,6 +26,25 @@ class GrainfatherAccount:
 
 
 @dataclass(slots=True)
+class GrainfatherRecipe:
+    recipe_id: int | None
+    name: str | None
+    abv: float | None
+    ibu: float | None
+    srm: float | None
+    calories: float | None
+    batch_size: float | None
+    boil_time: int | None
+    og: float | None
+    fg: float | None
+    fermentables: tuple[dict[str, Any], ...]
+    hops: tuple[dict[str, Any], ...]
+    yeasts: tuple[dict[str, Any], ...]
+    mash_steps: tuple[dict[str, Any], ...]
+    raw_payload: dict[str, Any]
+
+
+@dataclass(slots=True)
 class GrainfatherBrewSession:
     batch_id: int | str | None
     recipe_id: int | None
@@ -48,6 +67,7 @@ class GrainfatherBrewSession:
     fermentation_steps: tuple["GrainfatherFermentationStep", ...]
     equipment_profile: "GrainfatherEquipmentProfile | None"
     raw_payload: dict[str, Any]
+    recipe: "GrainfatherRecipe | None" = None
 
 
 @dataclass(slots=True)
@@ -152,6 +172,7 @@ class GrainfatherApiClient:
         sessions_list = await self.async_get_brew_sessions()
 
         brew_sessions: list[GrainfatherBrewSession] = []
+        recipe_cache: dict[int, GrainfatherRecipe | None] = {}
         for session_item in sessions_list:
             summary_batch = parse_batch_payload(session_item)
             recipe_id = _to_int(_first_value(session_item, "recipe_id")) or _to_int(
@@ -178,6 +199,7 @@ class GrainfatherApiClient:
                 batch = summary_batch
 
             if batch is not None:
+                await self._hydrate_recipe(batch, recipe_cache)
                 brew_sessions.append(batch)
 
         fermentation_devices = parse_fermentation_devices_payload(
@@ -261,6 +283,31 @@ class GrainfatherApiClient:
             "GET",
             f"/recipes/{recipe_id}/brew-sessions/{brew_session_id}",
         )
+
+    async def async_get_recipe(self, recipe_id: int) -> dict[str, Any]:
+        return await self._request_json("GET", f"/recipes/{recipe_id}")
+
+    async def _hydrate_recipe(
+        self,
+        batch: GrainfatherBrewSession,
+        recipe_cache: dict[int, GrainfatherRecipe | None],
+    ) -> None:
+        """Fill missing recipe metrics/ingredients via GET /recipes/{id}, cached per poll."""
+        recipe_id = batch.recipe_id
+        if recipe_id is None or not _recipe_needs_fetch(batch.recipe):
+            return
+
+        if recipe_id in recipe_cache:
+            fetched = recipe_cache[recipe_id]
+        else:
+            try:
+                fetched = parse_recipe_payload(await self.async_get_recipe(recipe_id))
+            except GrainfatherApiError:
+                fetched = None
+            recipe_cache[recipe_id] = fetched
+
+        if fetched is not None:
+            batch.recipe = _merge_recipe(batch.recipe, fetched)
 
     async def async_set_brew_session_status(
         self,
@@ -446,6 +493,7 @@ def parse_batch_payload(payload: dict[str, Any] | None) -> GrainfatherBrewSessio
     fermentation_device_ids = tuple(_parse_int_list(payload.get("fermentation_devices") or []))
     fermentation_steps = parse_fermentation_steps_payload(payload.get("fermentation_steps") or [])
     equipment_profile = parse_equipment_profile_payload(equipment_payload) if equipment_payload else None
+    recipe = parse_recipe_payload(recipe_payload) if recipe_payload else None
 
     return GrainfatherBrewSession(
         batch_id=_first_value(payload, "id", "batchId"),
@@ -492,6 +540,160 @@ def parse_batch_payload(payload: dict[str, Any] | None) -> GrainfatherBrewSessio
         fermentation_steps=fermentation_steps,
         equipment_profile=equipment_profile,
         raw_payload=deepcopy(payload),
+        recipe=recipe,
+    )
+
+
+def parse_recipe_payload(payload: dict[str, Any] | None) -> GrainfatherRecipe | None:
+    if not payload:
+        return None
+
+    return GrainfatherRecipe(
+        recipe_id=_to_int(_first_value(payload, "id", "recipe_id", "recipeId")),
+        name=_first_value(payload, "name"),
+        abv=_to_float(_first_value(payload, "abv")),
+        ibu=_to_float(_first_value(payload, "ibu")),
+        srm=_to_float(_first_value(payload, "srm", "color")),
+        calories=_to_float(_first_value(payload, "calories")),
+        batch_size=_to_float(_first_value(payload, "batch_size", "batchSize")),
+        boil_time=_to_int(_first_value(payload, "boil_time", "boilTime")),
+        og=_to_float(_first_value(payload, "og", "original_gravity", "originalGravity")),
+        fg=_to_float(_first_value(payload, "fg", "final_gravity", "finalGravity")),
+        fermentables=_parse_recipe_fermentables(payload.get("fermentables") or []),
+        hops=_parse_recipe_hops(payload.get("hops") or []),
+        yeasts=_parse_recipe_yeasts(payload.get("yeasts") or []),
+        mash_steps=_parse_recipe_mash_steps(
+            payload.get("mash_steps") or payload.get("mashSteps") or []
+        ),
+        raw_payload=deepcopy(payload),
+    )
+
+
+def _parse_recipe_fermentables(payload: Any) -> tuple[dict[str, Any], ...]:
+    if not isinstance(payload, list):
+        return tuple()
+
+    fermentables: list[dict[str, Any]] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        fermentables.append(
+            {
+                "name": _first_value(item, "name"),
+                "amount": _to_float(_first_value(item, "amount")),
+                "ppg": _to_float(_first_value(item, "ppg")),
+                "lovibond": _to_float(_first_value(item, "lovibond")),
+                "supplier": _first_value(item, "supplier"),
+            }
+        )
+    return tuple(fermentables)
+
+
+def _parse_recipe_hops(payload: Any) -> tuple[dict[str, Any], ...]:
+    if not isinstance(payload, list):
+        return tuple()
+
+    hops: list[dict[str, Any]] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        hops.append(
+            {
+                "name": _first_value(item, "name"),
+                "amount": _to_float(_first_value(item, "amount")),
+                "aa": _to_float(_first_value(item, "aa")),
+                "time": _to_int(_first_value(item, "time")),
+                "ibu": _to_float(_first_value(item, "ibu")),
+                "order": _to_int(_first_value(item, "order")),
+            }
+        )
+    return tuple(hops)
+
+
+def _parse_recipe_yeasts(payload: Any) -> tuple[dict[str, Any], ...]:
+    if not isinstance(payload, list):
+        return tuple()
+
+    yeasts: list[dict[str, Any]] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        yeasts.append(
+            {
+                "name": _first_value(item, "name"),
+                "attenuation": _to_float(_first_value(item, "attenuation")),
+                "amount": _to_float(_first_value(item, "amount")),
+                "unit": _first_value(item, "unit"),
+                "product_code": _first_value(item, "product_code", "productCode"),
+            }
+        )
+    return tuple(yeasts)
+
+
+def _parse_recipe_mash_steps(payload: Any) -> tuple[dict[str, Any], ...]:
+    if not isinstance(payload, list):
+        return tuple()
+
+    mash_steps: list[dict[str, Any]] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        mash_steps.append(
+            {
+                "name": _first_value(item, "name"),
+                "temperature": _to_float(_first_value(item, "temperature")),
+                "time": _to_int(_first_value(item, "time")),
+                "order": _to_int(_first_value(item, "order")),
+            }
+        )
+    return tuple(mash_steps)
+
+
+_REQUIRED_RECIPE_METRIC_FIELDS = (
+    "abv",
+    "ibu",
+    "srm",
+    "calories",
+    "batch_size",
+    "boil_time",
+)
+
+
+def _recipe_needs_fetch(recipe: GrainfatherRecipe | None) -> bool:
+    """Return True when the embedded recipe lacks metrics or ingredients."""
+    if recipe is None:
+        return True
+    if any(getattr(recipe, field_name) is None for field_name in _REQUIRED_RECIPE_METRIC_FIELDS):
+        return True
+    if not (recipe.fermentables or recipe.hops or recipe.yeasts or recipe.mash_steps):
+        return True
+    return False
+
+
+def _merge_recipe(
+    existing: GrainfatherRecipe | None,
+    fetched: GrainfatherRecipe,
+) -> GrainfatherRecipe:
+    """Combine an embedded recipe with a fetched one, preferring present values."""
+    if existing is None:
+        return fetched
+
+    return GrainfatherRecipe(
+        recipe_id=existing.recipe_id or fetched.recipe_id,
+        name=existing.name or fetched.name,
+        abv=existing.abv if existing.abv is not None else fetched.abv,
+        ibu=existing.ibu if existing.ibu is not None else fetched.ibu,
+        srm=existing.srm if existing.srm is not None else fetched.srm,
+        calories=existing.calories if existing.calories is not None else fetched.calories,
+        batch_size=existing.batch_size if existing.batch_size is not None else fetched.batch_size,
+        boil_time=existing.boil_time if existing.boil_time is not None else fetched.boil_time,
+        og=existing.og if existing.og is not None else fetched.og,
+        fg=existing.fg if existing.fg is not None else fetched.fg,
+        fermentables=existing.fermentables or fetched.fermentables,
+        hops=existing.hops or fetched.hops,
+        yeasts=existing.yeasts or fetched.yeasts,
+        mash_steps=existing.mash_steps or fetched.mash_steps,
+        raw_payload=fetched.raw_payload or existing.raw_payload,
     )
 
 

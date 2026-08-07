@@ -14,6 +14,7 @@ from custom_components.grainfather.api import (
     parse_fermentation_device_history_payload,
     parse_fermentation_device_history_points,
     parse_fermentation_devices_payload,
+    parse_recipe_payload,
 )
 from custom_components.grainfather.const import (
     brew_session_status_name,
@@ -155,6 +156,216 @@ def test_parse_batch_payload_reads_batch_variant_from_object() -> None:
 
     assert batch is not None
     assert batch.batch_variant_name == "Fermenter 3"
+
+
+def test_parse_recipe_payload_extracts_metrics_and_ingredients() -> None:
+    payload = {
+        "id": 1104689,
+        "name": "Orange IPA",
+        "abv": "6.5",
+        "ibu": "45.2",
+        "srm": "8.1",
+        "calories": "210",
+        "batch_size": "23",
+        "boil_time": "60",
+        "og": "1.0484",
+        "fg": "1.0122",
+        "fermentables": [
+            {"name": "Pale Ale Malt", "amount": "5.0", "ppg": "37", "lovibond": "2.5", "supplier": "X"},
+        ],
+        "hops": [
+            {"name": "Citra", "amount": "50", "aa": "12.0", "time": 15, "ibu": "20.1", "order": 1},
+        ],
+        "yeasts": [
+            {"name": "US-05", "attenuation": "81", "amount": "1", "unit": "pkg", "product_code": "US05"},
+        ],
+        "mash_steps": [
+            {"name": "Mash", "temperature": "66", "time": 60, "order": 0},
+        ],
+    }
+
+    recipe = parse_recipe_payload(payload)
+
+    assert recipe is not None
+    assert recipe.recipe_id == 1104689
+    assert recipe.name == "Orange IPA"
+    assert recipe.abv == 6.5
+    assert recipe.ibu == 45.2
+    assert recipe.srm == 8.1
+    assert recipe.calories == 210
+    assert recipe.batch_size == 23
+    assert recipe.boil_time == 60
+    assert recipe.og == 1.0484
+    assert recipe.fg == 1.0122
+    assert recipe.fermentables[0]["name"] == "Pale Ale Malt"
+    assert recipe.fermentables[0]["ppg"] == 37
+    assert recipe.hops[0]["name"] == "Citra"
+    assert recipe.hops[0]["aa"] == 12.0
+    assert recipe.yeasts[0]["attenuation"] == 81
+    assert recipe.mash_steps[0]["temperature"] == 66
+
+
+def test_parse_recipe_payload_returns_none_for_empty() -> None:
+    assert parse_recipe_payload(None) is None
+    assert parse_recipe_payload({}) is None
+
+
+def test_parse_batch_payload_attaches_embedded_recipe() -> None:
+    payload = {
+        "id": 1378631,
+        "session_name": "Orange IPA #271",
+        "recipe": {
+            "id": 12,
+            "name": "Orange IPA",
+            "abv": 6.5,
+            "ibu": 45.0,
+        },
+    }
+
+    batch = parse_batch_payload(payload)
+
+    assert batch is not None
+    assert batch.recipe is not None
+    assert batch.recipe.abv == 6.5
+    assert batch.recipe.ibu == 45.0
+
+
+def test_parse_batch_payload_recipe_is_none_without_recipe_object() -> None:
+    batch = parse_batch_payload({"id": 1, "session_name": "Session"})
+
+    assert batch is not None
+    assert batch.recipe is None
+
+
+def test_async_get_snapshot_fetches_recipe_only_when_embedded_is_insufficient() -> None:
+    class FakeGrainfatherApiClient(GrainfatherApiClient):
+        def __init__(self) -> None:
+            self._session = None
+            self._email = ""
+            self._password = ""
+            self._base_url = "https://community.grainfather.com/api"
+            self._access_token = "token"
+            self._account = None
+            self.recipe_fetch_ids: list[int] = []
+
+        async def async_get_brew_sessions(self) -> list[dict[str, Any]]:
+            # Two sessions share recipe 12 (needs fetch); one has a complete recipe 99.
+            return [
+                {"id": 1, "status": 10, "recipe": {"id": 12, "name": "IPA"}},
+                {"id": 2, "status": 10, "recipe": {"id": 12, "name": "IPA"}},
+                {
+                    "id": 3,
+                    "status": 10,
+                    "recipe": {
+                        "id": 99,
+                        "name": "Stout",
+                        "abv": 5.0,
+                        "ibu": 30.0,
+                        "srm": 40.0,
+                        "calories": 180.0,
+                        "batch_size": 20.0,
+                        "boil_time": 60,
+                        "hops": [{"name": "Fuggle"}],
+                    },
+                },
+            ]
+
+        async def async_get_recipe(self, recipe_id: int) -> dict[str, Any]:
+            self.recipe_fetch_ids.append(recipe_id)
+            return {
+                "id": recipe_id,
+                "name": "IPA",
+                "abv": 6.5,
+                "ibu": 45.0,
+                "srm": 8.0,
+                "calories": 210.0,
+                "batch_size": 23.0,
+                "boil_time": 60,
+                "hops": [{"name": "Citra"}],
+            }
+
+        async def _request_json(
+            self,
+            method: str,
+            path: str,
+            *,
+            json_payload=None,
+            query_params=None,
+            retry_on_auth_error: bool = True,
+        ):
+            del method, path, json_payload, query_params, retry_on_auth_error
+            return []
+
+        async def async_get_fermentation_device_history(
+            self,
+            device_id: int,
+            *,
+            from_date: str = "2001-01-07",
+            data_format: str = "raw",
+            metric: bool = True,
+        ) -> list[dict[str, Any]]:
+            del device_id, from_date, data_format, metric
+            return []
+
+    client = FakeGrainfatherApiClient()
+
+    snapshot = asyncio.run(client.async_get_snapshot())
+
+    # Recipe 12 fetched exactly once (cached for the second session); recipe 99 never fetched.
+    assert client.recipe_fetch_ids == [12]
+    sessions = {s.batch_id: s for s in snapshot.brew_sessions}
+    assert sessions[1].recipe is not None and sessions[1].recipe.abv == 6.5
+    assert sessions[2].recipe is not None and sessions[2].recipe.abv == 6.5
+    assert sessions[3].recipe is not None and sessions[3].recipe.abv == 5.0
+
+
+def test_async_get_snapshot_recipe_fetch_failure_degrades_gracefully() -> None:
+    class FakeGrainfatherApiClient(GrainfatherApiClient):
+        def __init__(self) -> None:
+            self._session = None
+            self._email = ""
+            self._password = ""
+            self._base_url = "https://community.grainfather.com/api"
+            self._access_token = "token"
+            self._account = None
+
+        async def async_get_brew_sessions(self) -> list[dict[str, Any]]:
+            return [{"id": 1, "status": 10, "recipe": {"id": 12, "name": "IPA"}}]
+
+        async def async_get_recipe(self, recipe_id: int) -> dict[str, Any]:
+            raise GrainfatherApiError("boom")
+
+        async def _request_json(
+            self,
+            method: str,
+            path: str,
+            *,
+            json_payload=None,
+            query_params=None,
+            retry_on_auth_error: bool = True,
+        ):
+            del method, path, json_payload, query_params, retry_on_auth_error
+            return []
+
+        async def async_get_fermentation_device_history(
+            self,
+            device_id: int,
+            *,
+            from_date: str = "2001-01-07",
+            data_format: str = "raw",
+            metric: bool = True,
+        ) -> list[dict[str, Any]]:
+            del device_id, from_date, data_format, metric
+            return []
+
+    client = FakeGrainfatherApiClient()
+
+    snapshot = asyncio.run(client.async_get_snapshot())
+
+    assert len(snapshot.brew_sessions) == 1
+    # Embedded (limited) recipe is kept; metrics stay None without raising.
+    assert snapshot.brew_sessions[0].recipe is not None
+    assert snapshot.brew_sessions[0].recipe.abv is None
 
 
 def test_parse_fermentation_devices_payload() -> None:
