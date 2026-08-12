@@ -1,0 +1,86 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Mit Grainfather verbinden",
+        "description": "Gib deine Grainfather-Zugangsdaten ein.",
+        "data": {
+          "email": "E-Mail",
+          "password": "Passwort"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Authentifizierung fehlgeschlagen.",
+      "cannot_connect": "Verbindung zu Grainfather nicht möglich."
+    },
+    "abort": {
+      "already_configured": "Dieses Grainfather-Konto ist bereits eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Grainfather-Optionen",
+        "data": {
+          "scan_interval": "Aktualisierungsintervall im Ruhezustand (Sekunden)",
+          "active_scan_interval": "Aktualisierungsintervall bei Aktivität (Sekunden)",
+          "include_completed_sessions": "Abgeschlossene Brausitzungen einschließen"
+        },
+        "data_description": {
+          "scan_interval": "Wie häufig (in Sekunden) die Grainfather-Cloud-API im Ruhezustand (kein aktiver Brauvorgang) abgefragt wird. Minimum 60 s, Maximum 3600 s.",
+          "active_scan_interval": "Wie häufig (in Sekunden) die API während eines aktiven Brau- oder Gärvorgangs und kurz nach einer Änderung abgefragt wird. Minimum 60 s, Maximum 3600 s.",
+          "include_completed_sessions": "Wenn deaktiviert, werden abgeschlossene Sitzungen aus den Integrationsdaten herausgefiltert und die Entitäten werden nicht verfügbar."
+        }
+      }
+    }
+  },
+  "entity": {
+    "image": {
+      "integration_icon": {
+        "name": "Integrationssymbol"
+      },
+      "session_recipe_image": {
+        "name": "Rezeptbild"
+      }
+    },
+    "select": {
+      "session_status": {
+        "name": "Status",
+        "state": {
+          "planning": "Planung",
+          "brewing": "Brauen",
+          "fermenting": "Gärung",
+          "conditioning": "Konditionierung",
+          "completed": "Abgeschlossen",
+          "serving": "Ausschank"
+        }
+      }
+    },
+    "sensor": {
+      "session_status": { "name": "Status" },
+      "session_abv": { "name": "Alkoholgehalt" },
+      "session_style": { "name": "Stil" },
+      "session_original_gravity": { "name": "Stammwürze" },
+      "session_final_gravity": { "name": "Endvergärungsgrad" },
+      "session_batch_number": { "name": "Chargennummer" },
+      "session_batch_variant_name": { "name": "Chargenvariante" },
+      "session_recipe_image_url": { "name": "Rezeptbild" },
+      "session_target_abv": { "name": "Ziel-Alkoholgehalt" },
+      "session_ibu": { "name": "IBU" },
+      "session_color_srm": { "name": "Farbe" },
+      "session_calories": { "name": "Kalorien" },
+      "session_batch_size": { "name": "Chargengröße" },
+      "session_boil_time": { "name": "Kochzeit" },
+      "session_pre_boil_gravity": { "name": "Stammwürze vor dem Kochen" },
+      "session_conditioning_temperature": { "name": "Konditionierungstemperatur" },
+      "session_conditioning_duration": { "name": "Konditionierungsdauer" },
+      "session_ferment_volume": { "name": "Gärvolumen" },
+      "session_priming_sugar": { "name": "Speisezucker" },
+      "session_recipe_info": { "name": "Rezept" },
+      "fermdevice_temperature": { "name": "Temperatur" },
+      "fermdevice_target_temperature": { "name": "Zieltemperatur" },
+      "fermdevice_gravity": { "name": "Dichte" }
+    }
+  }
+}
