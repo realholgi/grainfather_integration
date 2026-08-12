@@ -70,8 +70,14 @@
       "session_original_gravity": {
         "name": "Original Gravity"
       },
+      "session_original_gravity_plato": {
+        "name": "Original Gravity (Plato)"
+      },
       "session_final_gravity": {
         "name": "Final Gravity"
+      },
+      "session_final_gravity_plato": {
+        "name": "Final Gravity (Plato)"
       },
       "session_batch_number": {
         "name": "Batch Number"
@@ -103,6 +109,9 @@
       "session_pre_boil_gravity": {
         "name": "Pre-Boil Gravity"
       },
+      "session_pre_boil_gravity_plato": {
+        "name": "Pre-Boil Gravity (Plato)"
+      },
       "session_conditioning_temperature": {
         "name": "Conditioning Temperature"
       },
@@ -126,6 +135,9 @@
       },
       "fermdevice_gravity": {
         "name": "Gravity"
+      },
+      "fermdevice_gravity_plato": {
+        "name": "Gravity (Plato)"
       }
     }
   }

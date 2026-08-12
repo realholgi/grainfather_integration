@@ -62,7 +62,9 @@
       "session_abv": { "name": "Alkoholgehalt" },
       "session_style": { "name": "Stil" },
       "session_original_gravity": { "name": "Stammwürze" },
+      "session_original_gravity_plato": { "name": "Stammwürze (Plato)" },
       "session_final_gravity": { "name": "Endvergärungsgrad" },
+      "session_final_gravity_plato": { "name": "Endvergärungsgrad (Plato)" },
       "session_batch_number": { "name": "Chargennummer" },
       "session_batch_variant_name": { "name": "Chargenvariante" },
       "session_recipe_image_url": { "name": "Rezeptbild" },
@@ -73,6 +75,7 @@
       "session_batch_size": { "name": "Chargengröße" },
       "session_boil_time": { "name": "Kochzeit" },
       "session_pre_boil_gravity": { "name": "Stammwürze vor dem Kochen" },
+      "session_pre_boil_gravity_plato": { "name": "Stammwürze vor dem Kochen (Plato)" },
       "session_conditioning_temperature": { "name": "Konditionierungstemperatur" },
       "session_conditioning_duration": { "name": "Konditionierungsdauer" },
       "session_ferment_volume": { "name": "Gärvolumen" },
@@ -80,7 +83,8 @@
       "session_recipe_info": { "name": "Rezept" },
       "fermdevice_temperature": { "name": "Temperatur" },
       "fermdevice_target_temperature": { "name": "Zieltemperatur" },
-      "fermdevice_gravity": { "name": "Dichte" }
+      "fermdevice_gravity": { "name": "Dichte" },
+      "fermdevice_gravity_plato": { "name": "Dichte (Plato)" }
     }
   }
 }

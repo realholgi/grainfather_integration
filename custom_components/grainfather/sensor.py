@@ -44,6 +44,16 @@ def _calc_abv(og: float | None, fg: float | None) -> float | None:
     if og is None or fg is None:
         return None
     return round((og - fg) * 131.25, 2)
+def _sg_to_plato(sg: float | None) -> float | None:
+    if sg is None:
+        return None
+    return round(-616.868 + 1111.14 * sg - 630.272 * sg * sg + 135.997 * sg * sg * sg, 1)
+
+
+def _plato_from_session(session: GrainfatherBrewSession, attr_name: str) -> float | None:
+    return _sg_to_plato(getattr(session, attr_name, None))
+
+
 
 
 def _recipe_value(session: GrainfatherBrewSession, attr_name: str) -> Any:
@@ -126,10 +136,24 @@ SESSION_SENSORS: tuple[GrainfatherSessionSensorDescription, ...] = (
         value_fn=lambda s: s.original_gravity,
     ),
     GrainfatherSessionSensorDescription(
+        key="original_gravity_plato",
+        translation_key="session_original_gravity_plato",
+        native_unit_of_measurement="°P",
+        suggested_display_precision=1,
+        value_fn=lambda s: _plato_from_session(s, "original_gravity"),
+    ),
+    GrainfatherSessionSensorDescription(
         key="final_gravity",
         translation_key="session_final_gravity",
         suggested_display_precision=4,
         value_fn=lambda s: s.final_gravity,
+    ),
+    GrainfatherSessionSensorDescription(
+        key="final_gravity_plato",
+        translation_key="session_final_gravity_plato",
+        native_unit_of_measurement="°P",
+        suggested_display_precision=1,
+        value_fn=lambda s: _plato_from_session(s, "final_gravity"),
     ),
     GrainfatherSessionSensorDescription(
         key="batch_variant_name",
@@ -189,6 +213,13 @@ SESSION_SENSORS: tuple[GrainfatherSessionSensorDescription, ...] = (
         translation_key="session_pre_boil_gravity",
         suggested_display_precision=4,
         value_fn=lambda s: _raw_float(s, "pre_boil_gravity", "preBoilGravity"),
+    ),
+    GrainfatherSessionSensorDescription(
+        key="pre_boil_gravity_plato",
+        translation_key="session_pre_boil_gravity_plato",
+        native_unit_of_measurement="°P",
+        suggested_display_precision=1,
+        value_fn=lambda s: _sg_to_plato(_raw_float(s, "pre_boil_gravity", "preBoilGravity")),
     ),
     GrainfatherSessionSensorDescription(
         key="conditioning_temperature",
@@ -492,6 +523,12 @@ def _build_sensor_entities(
             entities.append(
                 GrainfatherFermDeviceGravitySensor(coordinator, entry, device.device_id)
             )
+        plato_unique_id = f"{entry.entry_id}_fermdevice_{device.device_id}_gravity_plato"
+        if plato_unique_id not in known_unique_ids:
+            known_unique_ids.add(plato_unique_id)
+            entities.append(
+                GrainfatherFermDeviceGravityPlatoSensor(coordinator, entry, device.device_id)
+            )
 
         if device.fermentation_device_type_id == 30:
             target_temp_unique_id = (
@@ -737,6 +774,23 @@ class GrainfatherFermDeviceGravitySensor(
             "history_points": _serialize_history_points(history, _MAX_EXPOSED_DEVICE_HISTORY_POINTS),
             "history_points_count": len(history),
         }
+class GrainfatherFermDeviceGravityPlatoSensor(GrainfatherFermDeviceGravitySensor):
+    _attr_translation_key = "fermdevice_gravity_plato"
+    _attr_native_unit_of_measurement = "°P"
+    _attr_suggested_display_precision = 1
+
+    def __init__(
+        self,
+        coordinator: GrainfatherDataUpdateCoordinator,
+        entry: ConfigEntry,
+        device_id: int | None,
+    ) -> None:
+        super().__init__(coordinator, entry, device_id)
+        self._attr_unique_id = f"{entry.entry_id}_fermdevice_{device_id}_gravity_plato"
+
+    @property
+    def native_value(self) -> Any:
+        return _sg_to_plato(super().native_value)
 
 
 class GrainfatherFermDeviceTargetTemperatureSensor(
