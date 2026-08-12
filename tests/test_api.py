@@ -5,10 +5,10 @@ from custom_components.grainfather.api import (
     GrainfatherApiClient,
     GrainfatherApiError,
     _select_active_brew_session,
-    build_brew_session_update_payload,
     brew_session_device_identifier,
     brew_session_display_name,
     brew_session_unique_fragment,
+    build_brew_session_update_payload,
     parse_account_payload,
     parse_batch_payload,
     parse_fermentation_device_history_payload,
@@ -53,7 +53,10 @@ def test_parse_batch_payload() -> None:
         "original_gravity": 1.0484,
         "final_gravity": 1.0122,
         "fermentation_devices": [80971, 69883],
-        "recipe": {"name": "Orange IPA", "image": {"url": "https://example.com/ipa.jpg"}},
+        "recipe": {
+            "name": "Orange IPA",
+            "image": {"url": "https://example.com/ipa.jpg"},
+        },
         "equipment_profile": {"name": "Grainfather-G40"},
     }
 
@@ -172,13 +175,32 @@ def test_parse_recipe_payload_extracts_metrics_and_ingredients() -> None:
         "og": "1.0484",
         "fg": "1.0122",
         "fermentables": [
-            {"name": "Pale Ale Malt", "amount": "5.0", "ppg": "37", "lovibond": "2.5", "supplier": "X"},
+            {
+                "name": "Pale Ale Malt",
+                "amount": "5.0",
+                "ppg": "37",
+                "lovibond": "2.5",
+                "supplier": "X",
+            },
         ],
         "hops": [
-            {"name": "Citra", "amount": "50", "aa": "12.0", "time": 15, "ibu": "20.1", "order": 1},
+            {
+                "name": "Citra",
+                "amount": "50",
+                "aa": "12.0",
+                "time": 15,
+                "ibu": "20.1",
+                "order": 1,
+            },
         ],
         "yeasts": [
-            {"name": "US-05", "attenuation": "81", "amount": "1", "unit": "pkg", "product_code": "US05"},
+            {
+                "name": "US-05",
+                "attenuation": "81",
+                "amount": "1",
+                "unit": "pkg",
+                "product_code": "US05",
+            },
         ],
         "mash_steps": [
             {"name": "Mash", "temperature": "66", "time": 60, "order": 0},
@@ -312,7 +334,7 @@ def test_async_get_snapshot_fetches_recipe_only_when_embedded_is_insufficient() 
 
     snapshot = asyncio.run(client.async_get_snapshot())
 
-    # Recipe 12 fetched exactly once (cached for the second session); recipe 99 never fetched.
+    # Recipe 12 is cached for its second session; recipe 99 is never fetched.
     assert client.recipe_fetch_ids == [12]
     sessions = {s.batch_id: s for s in snapshot.brew_sessions}
     assert sessions[1].recipe is not None and sessions[1].recipe.abv == 6.5
@@ -384,7 +406,16 @@ def test_serialize_recipe_ingredients_caps_and_handles_none() -> None:
 
     assert len(serialized["fermentables"]) == 30
     assert serialized["fermentables"][0]["name"] == "F0"
-    assert serialized["hops"] == [{"name": "Citra", "amount": None, "aa": None, "time": None, "ibu": None, "order": None}]
+    assert serialized["hops"] == [
+        {
+            "name": "Citra",
+            "amount": None,
+            "aa": None,
+            "time": None,
+            "ibu": None,
+            "order": None,
+        }
+    ]
     assert serialized["yeasts"] == []
     assert serialized["mash_steps"][0]["temperature"] == 66
 
@@ -579,7 +610,9 @@ def test_parse_fermentation_device_history_payload() -> None:
     dict_payload = {"data": [{"temperature": 21.0}]}
 
     assert parse_fermentation_device_history_payload(list_payload) == list_payload
-    assert parse_fermentation_device_history_payload(dict_payload) == [{"temperature": 21.0}]
+    assert parse_fermentation_device_history_payload(dict_payload) == [
+        {"temperature": 21.0}
+    ]
     assert parse_fermentation_device_history_payload({"data": "invalid"}) == []
     assert parse_fermentation_device_history_payload("invalid") == []
 
@@ -828,7 +861,9 @@ def test_async_get_snapshot_preserves_style_from_summary_when_detail_omits_it() 
     assert snapshot.brew_sessions[0].style_name == "American IPA"
 
 
-def test_async_set_fermentation_step_duration_updates_temperature_and_ramp_fields() -> None:
+def test_async_set_fermentation_step_duration_updates_temperature_and_ramp_fields() -> (
+    None
+):
     class FakeGrainfatherApiClient(GrainfatherApiClient):
         def __init__(self) -> None:
             self._session = None
@@ -957,7 +992,7 @@ def test_async_set_fermentation_step_duration_can_clear_finish_temperature() -> 
     assert updated.fermentation_steps[0].finish_temperature is None
 
 
-def test_async_set_fermentation_steps_raises_when_status_is_conditioning_or_higher() -> None:
+def test_async_set_fermentation_steps_rejects_conditioning_status() -> None:
     class FakeGrainfatherApiClient(GrainfatherApiClient):
         def __init__(self) -> None:
             self._session = None

@@ -42,7 +42,9 @@ async def async_setup_entry(
         if new_entities:
             async_add_entities(new_entities)
 
-    entry.async_on_unload(coordinator.async_add_listener(_async_handle_coordinator_update))
+    entry.async_on_unload(
+        coordinator.async_add_listener(_async_handle_coordinator_update)
+    )
 
 
 def _build_select_entities(
@@ -69,7 +71,8 @@ def _build_select_entities(
 
         for step_index in range(len(session.fermentation_steps)):
             ramp_unique_id = (
-                f"{entry.entry_id}_session_{session_fragment}_step_{step_index}_ramp_select"
+                f"{entry.entry_id}_session_{session_fragment}_"
+                f"step_{step_index}_ramp_select"
             )
             if ramp_unique_id in known_unique_ids:
                 continue
@@ -147,12 +150,18 @@ class GrainfatherSessionStatusSelect(
         recipe_id = session.recipe_id
         batch_id = session.batch_id
         if recipe_id is None:
-            raise HomeAssistantError(f"Cannot resolve recipe_id for session {self._batch_id}")
+            raise HomeAssistantError(
+                f"Cannot resolve recipe_id for session {self._batch_id}"
+            )
         if batch_id is None:
-            raise HomeAssistantError(f"Cannot resolve brew_session_id for session {self._batch_id}")
+            raise HomeAssistantError(
+                f"Cannot resolve brew_session_id for session {self._batch_id}"
+            )
 
         status = normalize_brew_session_status(option)
-        await self.coordinator.api.async_set_brew_session_status(recipe_id, int(batch_id), status)
+        await self.coordinator.api.async_set_brew_session_status(
+            recipe_id, int(batch_id), status
+        )
         self.coordinator.note_user_action()
 
 
@@ -175,7 +184,8 @@ class GrainfatherFermentationStepRampSelect(
         self._step_index = step_index
         self._attr_has_entity_name = True
         self._attr_unique_id = (
-            f"{entry.entry_id}_session_{session_unique_fragment}_step_{step_index}_ramp_select"
+            f"{entry.entry_id}_session_{session_unique_fragment}_"
+            f"step_{step_index}_ramp_select"
         )
 
     @property
@@ -219,7 +229,9 @@ class GrainfatherFermentationStepRampSelect(
         session = self._session
         if session is None or self._step_index >= len(session.fermentation_steps):
             return None
-        return "on" if session.fermentation_steps[self._step_index].is_ramp_step else "off"
+        return (
+            "on" if session.fermentation_steps[self._step_index].is_ramp_step else "off"
+        )
 
     async def async_select_option(self, option: str) -> None:
         if option not in RAMP_STEP_OPTIONS:
@@ -233,9 +245,13 @@ class GrainfatherFermentationStepRampSelect(
                 f"Step index {self._step_index} is out of range for this session"
             )
         if session.recipe_id is None:
-            raise HomeAssistantError(f"Cannot resolve recipe_id for session {self._batch_id}")
+            raise HomeAssistantError(
+                f"Cannot resolve recipe_id for session {self._batch_id}"
+            )
         if session.batch_id is None:
-            raise HomeAssistantError(f"Cannot resolve brew_session_id for session {self._batch_id}")
+            raise HomeAssistantError(
+                f"Cannot resolve brew_session_id for session {self._batch_id}"
+            )
 
         await self.coordinator.api.async_set_fermentation_step_duration(
             session.recipe_id,

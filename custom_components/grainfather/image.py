@@ -29,9 +29,7 @@ async def async_setup_entry(
 ) -> None:
     coordinator: GrainfatherDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    entities = [
-        GrainfatherIntegrationIconImage(entry)
-    ]
+    entities = [GrainfatherIntegrationIconImage(entry)]
 
     entities.extend(
         GrainfatherSessionRecipeImage(
@@ -76,7 +74,9 @@ class GrainfatherSessionRecipeImage(
         super().__init__(coordinator)
         self._batch_id = batch_id
         self._attr_has_entity_name = True
-        self._attr_unique_id = f"{entry.entry_id}_session_{session_unique_fragment}_recipe_image"
+        self._attr_unique_id = (
+            f"{entry.entry_id}_session_{session_unique_fragment}_recipe_image"
+        )
 
     @property
     def _session(self) -> GrainfatherBrewSession | None:

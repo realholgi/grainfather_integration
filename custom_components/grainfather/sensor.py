@@ -4,8 +4,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
-from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature, UnitOfTime, UnitOfVolume
 from homeassistant.core import HomeAssistant
@@ -15,18 +18,23 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import (
-    GrainfatherHistoryPoint,
     GrainfatherBrewSession,
     GrainfatherFermentationDevice,
+    GrainfatherHistoryPoint,
     GrainfatherSnapshot,
     brew_session_device_identifier,
     brew_session_display_name,
     brew_session_unique_fragment,
     serialize_recipe_ingredients,
 )
-from .const import BREW_SESSION_STATUS_NAME_BY_CODE, DOMAIN
-from .const import CONF_DEFAULT_DENSITY_UNIT, DEFAULT_DENSITY_UNIT
+from .const import (
+    BREW_SESSION_STATUS_NAME_BY_CODE,
+    CONF_DEFAULT_DENSITY_UNIT,
+    DEFAULT_DENSITY_UNIT,
+    DOMAIN,
+)
 from .coordinator import GrainfatherDataUpdateCoordinator
+from .density import sg_to_plato
 
 _MAX_EXPOSED_BATCH_HISTORY_POINTS = 20
 _MAX_EXPOSED_DEVICE_HISTORY_POINTS = 5
@@ -37,23 +45,22 @@ _MAX_EXPOSED_INGREDIENTS = 30
 @dataclass(frozen=True, kw_only=True)
 class GrainfatherSessionSensorDescription(SensorEntityDescription):
     value_fn: Callable[[GrainfatherBrewSession], Any]
-    attributes_fn: Callable[[GrainfatherBrewSession, GrainfatherSnapshot], dict[str, Any] | None] | None = None
+    attributes_fn: (
+        Callable[[GrainfatherBrewSession, GrainfatherSnapshot], dict[str, Any] | None]
+        | None
+    ) = None
 
 
 def _calc_abv(og: float | None, fg: float | None) -> float | None:
     if og is None or fg is None:
         return None
     return round((og - fg) * 131.25, 2)
-def _sg_to_plato(sg: float | None) -> float | None:
-    if sg is None:
-        return None
-    return round(-616.868 + 1111.14 * sg - 630.272 * sg * sg + 135.997 * sg * sg * sg, 1)
 
 
-def _plato_from_session(session: GrainfatherBrewSession, attr_name: str) -> float | None:
-    return _sg_to_plato(getattr(session, attr_name, None))
-
-
+def _plato_from_session(
+    session: GrainfatherBrewSession, attr_name: str
+) -> float | None:
+    return sg_to_plato(getattr(session, attr_name, None))
 
 
 def _recipe_value(session: GrainfatherBrewSession, attr_name: str) -> Any:
@@ -99,7 +106,8 @@ def _recipe_info_attributes(
     attributes: dict[str, Any] = {
         "grainfather_entity_type": "recipe",
         "recipe_id": recipe.recipe_id if recipe is not None else session.recipe_id,
-        "recipe_name": (recipe.name if recipe is not None else None) or session.recipe_name,
+        "recipe_name": (recipe.name if recipe is not None else None)
+        or session.recipe_name,
         "abv": recipe.abv if recipe is not None else None,
         "ibu": recipe.ibu if recipe is not None else None,
         "srm": recipe.srm if recipe is not None else None,
@@ -219,7 +227,9 @@ SESSION_SENSORS: tuple[GrainfatherSessionSensorDescription, ...] = (
         translation_key="session_pre_boil_gravity_plato",
         native_unit_of_measurement="°P",
         suggested_display_precision=1,
-        value_fn=lambda s: _sg_to_plato(_raw_float(s, "pre_boil_gravity", "preBoilGravity")),
+        value_fn=lambda s: sg_to_plato(
+            _raw_float(s, "pre_boil_gravity", "preBoilGravity")
+        ),
     ),
     GrainfatherSessionSensorDescription(
         key="conditioning_temperature",
@@ -227,14 +237,18 @@ SESSION_SENSORS: tuple[GrainfatherSessionSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         suggested_display_precision=1,
-        value_fn=lambda s: _raw_float(s, "conditioning_temperature", "conditioningTemperature"),
+        value_fn=lambda s: _raw_float(
+            s, "conditioning_temperature", "conditioningTemperature"
+        ),
     ),
     GrainfatherSessionSensorDescription(
         key="conditioning_duration",
         translation_key="session_conditioning_duration",
         native_unit_of_measurement=UnitOfTime.DAYS,
         device_class=SensorDeviceClass.DURATION,
-        value_fn=lambda s: _raw_float(s, "conditioning_duration", "conditioningDuration"),
+        value_fn=lambda s: _raw_float(
+            s, "conditioning_duration", "conditioningDuration"
+        ),
     ),
     GrainfatherSessionSensorDescription(
         key="ferment_volume",
@@ -259,7 +273,9 @@ SESSION_SENSORS: tuple[GrainfatherSessionSensorDescription, ...] = (
     GrainfatherSessionSensorDescription(
         key="recipe_info",
         translation_key="session_recipe_info",
-        value_fn=lambda s: (s.recipe.name if s.recipe is not None else None) or s.recipe_name,
+        value_fn=lambda s: (
+            (s.recipe.name if s.recipe is not None else None) or s.recipe_name
+        ),
         attributes_fn=lambda s, snapshot: _recipe_info_attributes(s, snapshot),
     ),
 )
@@ -355,14 +371,14 @@ def _get_collaborating_devices(
         return collaborators
 
     for other in snapshot.fermentation_devices:
-        if (
-            other.device_id == device.device_id
-            or str(other.linked_brew_session_id) != str(device.linked_brew_session_id)
-        ):
+        if other.device_id == device.device_id or str(
+            other.linked_brew_session_id
+        ) != str(device.linked_brew_session_id):
             continue
 
         has_data = (
-            other.last_temperature is not None or other.last_specific_gravity is not None
+            other.last_temperature is not None
+            or other.last_specific_gravity is not None
         )
         if not has_data:
             history = snapshot.fermentation_history_by_device_id.get(
@@ -423,7 +439,9 @@ def _session_batch_number_attributes(
             }
             for i, step in enumerate(session.fermentation_steps)
         ],
-        "history_points": _serialize_history_points(history, _MAX_EXPOSED_BATCH_HISTORY_POINTS),
+        "history_points": _serialize_history_points(
+            history, _MAX_EXPOSED_BATCH_HISTORY_POINTS
+        ),
         "history_points_count": len(history),
     }
 
@@ -479,7 +497,9 @@ async def async_setup_entry(
         if new_entities:
             async_add_entities(new_entities)
 
-    entry.async_on_unload(coordinator.async_add_listener(_async_handle_coordinator_update))
+    entry.async_on_unload(
+        coordinator.async_add_listener(_async_handle_coordinator_update)
+    )
 
 
 def _build_sensor_entities(
@@ -514,7 +534,9 @@ def _build_sensor_entities(
         if temp_unique_id not in known_unique_ids:
             known_unique_ids.add(temp_unique_id)
             entities.append(
-                GrainfatherFermDeviceTemperatureSensor(coordinator, entry, device.device_id)
+                GrainfatherFermDeviceTemperatureSensor(
+                    coordinator, entry, device.device_id
+                )
             )
 
         gravity_unique_id = f"{entry.entry_id}_fermdevice_{device.device_id}_gravity"
@@ -523,11 +545,15 @@ def _build_sensor_entities(
             entities.append(
                 GrainfatherFermDeviceGravitySensor(coordinator, entry, device.device_id)
             )
-        plato_unique_id = f"{entry.entry_id}_fermdevice_{device.device_id}_gravity_plato"
+        plato_unique_id = (
+            f"{entry.entry_id}_fermdevice_{device.device_id}_gravity_plato"
+        )
         if plato_unique_id not in known_unique_ids:
             known_unique_ids.add(plato_unique_id)
             entities.append(
-                GrainfatherFermDeviceGravityPlatoSensor(coordinator, entry, device.device_id)
+                GrainfatherFermDeviceGravityPlatoSensor(
+                    coordinator, entry, device.device_id
+                )
             )
 
         if device.fermentation_device_type_id == 30:
@@ -628,7 +654,6 @@ class GrainfatherSessionSensor(
         return session.recipe_image_url
 
 
-
 class GrainfatherFermDeviceTemperatureSensor(
     CoordinatorEntity[GrainfatherDataUpdateCoordinator],
     SensorEntity,
@@ -703,7 +728,9 @@ class GrainfatherFermDeviceTemperatureSensor(
                 CONF_DEFAULT_DENSITY_UNIT,
                 DEFAULT_DENSITY_UNIT,
             ),
-            "history_points": _serialize_history_points(history, _MAX_EXPOSED_DEVICE_HISTORY_POINTS),
+            "history_points": _serialize_history_points(
+                history, _MAX_EXPOSED_DEVICE_HISTORY_POINTS
+            ),
             "history_points_count": len(history),
         }
 
@@ -771,9 +798,13 @@ class GrainfatherFermDeviceGravitySensor(
                 CONF_DEFAULT_DENSITY_UNIT,
                 DEFAULT_DENSITY_UNIT,
             ),
-            "history_points": _serialize_history_points(history, _MAX_EXPOSED_DEVICE_HISTORY_POINTS),
+            "history_points": _serialize_history_points(
+                history, _MAX_EXPOSED_DEVICE_HISTORY_POINTS
+            ),
             "history_points_count": len(history),
         }
+
+
 class GrainfatherFermDeviceGravityPlatoSensor(GrainfatherFermDeviceGravitySensor):
     _attr_translation_key = "fermdevice_gravity_plato"
     _attr_native_unit_of_measurement = "°P"
@@ -790,7 +821,7 @@ class GrainfatherFermDeviceGravityPlatoSensor(GrainfatherFermDeviceGravitySensor
 
     @property
     def native_value(self) -> Any:
-        return _sg_to_plato(super().native_value)
+        return sg_to_plato(super().native_value)
 
 
 class GrainfatherFermDeviceTargetTemperatureSensor(
@@ -811,7 +842,9 @@ class GrainfatherFermDeviceTargetTemperatureSensor(
         super().__init__(coordinator)
         self._device_id = device_id
         self._attr_has_entity_name = True
-        self._attr_unique_id = f"{entry.entry_id}_fermdevice_{device_id}_target_temperature"
+        self._attr_unique_id = (
+            f"{entry.entry_id}_fermdevice_{device_id}_target_temperature"
+        )
 
     @property
     def _device(self) -> GrainfatherFermentationDevice | None:
@@ -854,4 +887,3 @@ class GrainfatherFermDeviceTargetTemperatureSensor(
             "linked_brew_session_id": device.linked_brew_session_id,
             "linked_brew_session_name": device.linked_brew_session_name,
         }
-

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -64,10 +64,10 @@ class GrainfatherBrewSession:
     fermentation_device_ids: tuple[int, ...]
     fermentation_device_count: int
     equipment_name: str | None
-    fermentation_steps: tuple["GrainfatherFermentationStep", ...]
-    equipment_profile: "GrainfatherEquipmentProfile | None"
+    fermentation_steps: tuple[GrainfatherFermentationStep, ...]
+    equipment_profile: GrainfatherEquipmentProfile | None
     raw_payload: dict[str, Any]
-    recipe: "GrainfatherRecipe | None" = None
+    recipe: GrainfatherRecipe | None = None
 
 
 @dataclass(slots=True)
@@ -124,11 +124,11 @@ class GrainfatherSnapshot:
     account: GrainfatherAccount
     brew_sessions: tuple[GrainfatherBrewSession, ...]
     fermentation_devices: tuple[GrainfatherFermentationDevice, ...]
-    fermentation_history_by_device_id: dict[int, tuple[GrainfatherHistoryPoint, ...]] = field(
-        default_factory=dict
-    )
-    brew_session_history_by_batch_id: dict[int, tuple[GrainfatherHistoryPoint, ...]] = field(
-        default_factory=dict
+    fermentation_history_by_device_id: dict[
+        int, tuple[GrainfatherHistoryPoint, ...]
+    ] = field(default_factory=dict)
+    brew_session_history_by_batch_id: dict[int, tuple[GrainfatherHistoryPoint, ...]] = (
+        field(default_factory=dict)
     )
 
 
@@ -152,7 +152,9 @@ class GrainfatherApiClient:
                 json=payload,
             ) as response:
                 if response.status in (401, 403):
-                    raise GrainfatherAuthenticationError("Invalid Grainfather credentials")
+                    raise GrainfatherAuthenticationError(
+                        "Invalid Grainfather credentials"
+                    )
                 response.raise_for_status()
                 data = await response.json()
         except ClientResponseError as err:
@@ -160,7 +162,9 @@ class GrainfatherApiClient:
 
         token = data.get("api_token") or data.get("accessToken") or data.get("token")
         if not token:
-            raise GrainfatherAuthenticationError("Authentication response did not include a token")
+            raise GrainfatherAuthenticationError(
+                "Authentication response did not include a token"
+            )
 
         self._access_token = token
         self._account = parse_account_payload(data)
@@ -185,7 +189,9 @@ class GrainfatherApiClient:
             # Fetch full detail for fermenting sessions to include fermentation steps
             if status == 20 and recipe_id is not None and batch_id is not None:
                 try:
-                    detail_payload = await self.async_get_brew_session_detail(recipe_id, batch_id)
+                    detail_payload = await self.async_get_brew_session_detail(
+                        recipe_id, batch_id
+                    )
                     batch = parse_batch_payload(detail_payload)
                     if (
                         batch is not None
@@ -207,7 +213,9 @@ class GrainfatherApiClient:
             await self._request_json("GET", "/equipment/fermentation-devices")
         )
 
-        history_from_date = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d")
+        history_from_date = (datetime.now(UTC) - timedelta(days=90)).strftime(
+            "%Y-%m-%d"
+        )
         history_by_device_id: dict[int, list[GrainfatherHistoryPoint]] = {}
         history_by_batch_id: dict[int, list[GrainfatherHistoryPoint]] = {}
 
@@ -225,22 +233,30 @@ class GrainfatherApiClient:
             except GrainfatherApiError:
                 continue
 
-            points = list(parse_fermentation_device_history_points(history_payload, device.device_id))
+            points = list(
+                parse_fermentation_device_history_points(
+                    history_payload, device.device_id
+                )
+            )
             if not points:
                 continue
 
             points.sort(
-                key=lambda point: _parse_datetime(point.timestamp)
-                or datetime.min.replace(tzinfo=timezone.utc)
+                key=lambda point: (
+                    _parse_datetime(point.timestamp) or datetime.min.replace(tzinfo=UTC)
+                )
             )
             history_by_device_id[device.device_id] = points
 
             for point in points:
                 if point.brew_session_id is not None:
-                    history_by_batch_id.setdefault(point.brew_session_id, []).append(point)
+                    history_by_batch_id.setdefault(point.brew_session_id, []).append(
+                        point
+                    )
 
         frozen_history_by_device_id = {
-            device_id: tuple(points) for device_id, points in history_by_device_id.items()
+            device_id: tuple(points)
+            for device_id, points in history_by_device_id.items()
         }
         frozen_history_by_batch_id = {
             batch_id: tuple(points) for batch_id, points in history_by_batch_id.items()
@@ -293,7 +309,7 @@ class GrainfatherApiClient:
         batch: GrainfatherBrewSession,
         recipe_cache: dict[int, GrainfatherRecipe | None],
     ) -> None:
-        """Fill missing recipe metrics/ingredients via GET /recipes/{id}, cached per poll."""
+        """Fill missing recipe metrics and ingredients from cached recipe requests."""
         recipe_id = batch.recipe_id
         if recipe_id is None or not _recipe_needs_fetch(batch.recipe):
             return
@@ -316,8 +332,12 @@ class GrainfatherApiClient:
         brew_session_id: int,
         status: int,
     ) -> GrainfatherBrewSession | None:
-        detail_payload = await self.async_get_brew_session_detail(recipe_id, brew_session_id)
-        updated_payload = build_brew_session_update_payload(detail_payload, status=status)
+        detail_payload = await self.async_get_brew_session_detail(
+            recipe_id, brew_session_id
+        )
+        updated_payload = build_brew_session_update_payload(
+            detail_payload, status=status
+        )
         result = await self._request_json(
             "PUT",
             f"/recipes/{recipe_id}/brew-sessions/{brew_session_id}",
@@ -331,7 +351,9 @@ class GrainfatherApiClient:
         brew_session_id: int,
         fermentation_steps: list[dict[str, Any]],
     ) -> GrainfatherBrewSession | None:
-        detail_payload = await self.async_get_brew_session_detail(recipe_id, brew_session_id)
+        detail_payload = await self.async_get_brew_session_detail(
+            recipe_id, brew_session_id
+        )
         _assert_fermentation_steps_editable(detail_payload)
         updated_payload = build_brew_session_update_payload(
             detail_payload,
@@ -356,7 +378,9 @@ class GrainfatherApiClient:
         finish_temperature: float | None = None,
         set_finish_temperature: bool = False,
     ) -> GrainfatherBrewSession | None:
-        detail_payload = await self.async_get_brew_session_detail(recipe_id, brew_session_id)
+        detail_payload = await self.async_get_brew_session_detail(
+            recipe_id, brew_session_id
+        )
         _assert_fermentation_steps_editable(detail_payload)
         steps = list(detail_payload.get("fermentation_steps") or [])
         if step_index >= len(steps):
@@ -370,7 +394,9 @@ class GrainfatherApiClient:
             and is_ramp_step is None
             and not set_finish_temperature
         ):
-            raise GrainfatherApiError("No fermentation step fields were provided to update")
+            raise GrainfatherApiError(
+                "No fermentation step fields were provided to update"
+            )
 
         updated_steps = [dict(step) for step in steps]
         if duration_minutes is not None:
@@ -430,9 +456,9 @@ class GrainfatherApiClient:
         }
         params: dict[str, Any] | None = None
         if method.upper() == "GET":
-            # Add a cache-buster to reduce stale responses from intermediate proxies/CDNs.
+            # Add a cache-buster to avoid stale intermediary responses.
             params = {
-                "_ts": int(datetime.now(timezone.utc).timestamp()),
+                "_ts": int(datetime.now(UTC).timestamp()),
                 **(query_params or {}),
             }
 
@@ -463,7 +489,9 @@ class GrainfatherApiClient:
         except ClientResponseError as err:
             if err.status in (401, 403):
                 self._access_token = None
-                raise GrainfatherAuthenticationError("Grainfather session expired") from err
+                raise GrainfatherAuthenticationError(
+                    "Grainfather session expired"
+                ) from err
             raise GrainfatherApiError(f"Grainfather request failed: {err}") from err
 
 
@@ -476,7 +504,9 @@ def parse_account_payload(payload: dict[str, Any]) -> GrainfatherAccount:
     )
 
 
-def parse_batch_payload(payload: dict[str, Any] | None) -> GrainfatherBrewSession | None:
+def parse_batch_payload(
+    payload: dict[str, Any] | None,
+) -> GrainfatherBrewSession | None:
     if not payload:
         return None
 
@@ -490,17 +520,29 @@ def parse_batch_payload(payload: dict[str, Any] | None) -> GrainfatherBrewSessio
         or {}
     )
     equipment_payload = payload.get("equipment_profile") or {}
-    batch_variant_payload = payload.get("batch_variant") or payload.get("batchVariant") or {}
-    fermentation_device_ids = tuple(_parse_int_list(payload.get("fermentation_devices") or []))
-    fermentation_steps = parse_fermentation_steps_payload(payload.get("fermentation_steps") or [])
-    equipment_profile = parse_equipment_profile_payload(equipment_payload) if equipment_payload else None
+    batch_variant_payload = (
+        payload.get("batch_variant") or payload.get("batchVariant") or {}
+    )
+    fermentation_device_ids = tuple(
+        _parse_int_list(payload.get("fermentation_devices") or [])
+    )
+    fermentation_steps = parse_fermentation_steps_payload(
+        payload.get("fermentation_steps") or []
+    )
+    equipment_profile = (
+        parse_equipment_profile_payload(equipment_payload)
+        if equipment_payload
+        else None
+    )
     recipe = parse_recipe_payload(recipe_payload) if recipe_payload else None
 
     return GrainfatherBrewSession(
         batch_id=_first_value(payload, "id", "batchId"),
-        recipe_id=_to_int(_first_value(payload, "recipe_id")) or _to_int(_first_value(recipe_payload, "id")),
+        recipe_id=_to_int(_first_value(payload, "recipe_id"))
+        or _to_int(_first_value(recipe_payload, "id")),
         session_name=_first_value(payload, "session_name", "sessionName"),
-        recipe_name=_first_value(recipe_payload, "name") or _first_value(payload, "name"),
+        recipe_name=_first_value(recipe_payload, "name")
+        or _first_value(payload, "name"),
         condition_date=_first_value(payload, "condition_date", "conditionDate"),
         fermentation_start_date=_first_value(
             payload,
@@ -516,7 +558,11 @@ def parse_batch_payload(payload: dict[str, Any] | None) -> GrainfatherBrewSessio
         notes=_first_value(payload, "notes", "note", "brew_notes", "brewNotes"),
         style_name=(
             _first_value(recipe_style_payload, "sub_category_name", "subCategoryName")
-            or _first_value(recipe_payload, "recipe_style-sub_category_name", "recipe_style_sub_category_name")
+            or _first_value(
+                recipe_payload,
+                "recipe_style-sub_category_name",
+                "recipe_style_sub_category_name",
+            )
             or _first_value(recipe_payload, "style_name")
             or _first_value(recipe_payload, "styleName")
             or _first_value(recipe_style_payload, "name")
@@ -533,7 +579,9 @@ def parse_batch_payload(payload: dict[str, Any] | None) -> GrainfatherBrewSessio
         ),
         status=_to_int(_first_value(payload, "status", "state")),
         batch_number=_to_int(_first_value(payload, "batch_number", "batchNumber")),
-        original_gravity=_to_float(_first_value(payload, "original_gravity", "originalGravity")),
+        original_gravity=_to_float(
+            _first_value(payload, "original_gravity", "originalGravity")
+        ),
         final_gravity=_to_float(_first_value(payload, "final_gravity", "finalGravity")),
         fermentation_device_ids=fermentation_device_ids,
         fermentation_device_count=len(fermentation_device_ids),
@@ -558,7 +606,9 @@ def parse_recipe_payload(payload: dict[str, Any] | None) -> GrainfatherRecipe | 
         calories=_to_float(_first_value(payload, "calories")),
         batch_size=_to_float(_first_value(payload, "batch_size", "batchSize")),
         boil_time=_to_int(_first_value(payload, "boil_time", "boilTime")),
-        og=_to_float(_first_value(payload, "og", "original_gravity", "originalGravity")),
+        og=_to_float(
+            _first_value(payload, "og", "original_gravity", "originalGravity")
+        ),
         fg=_to_float(_first_value(payload, "fg", "final_gravity", "finalGravity")),
         fermentables=_parse_recipe_fermentables(payload.get("fermentables") or []),
         hops=_parse_recipe_hops(payload.get("hops") or []),
@@ -664,7 +714,10 @@ def _recipe_needs_fetch(recipe: GrainfatherRecipe | None) -> bool:
     """Return True when the embedded recipe lacks metrics or ingredients."""
     if recipe is None:
         return True
-    if any(getattr(recipe, field_name) is None for field_name in _REQUIRED_RECIPE_METRIC_FIELDS):
+    if any(
+        getattr(recipe, field_name) is None
+        for field_name in _REQUIRED_RECIPE_METRIC_FIELDS
+    ):
         return True
     if not (recipe.fermentables or recipe.hops or recipe.yeasts or recipe.mash_steps):
         return True
@@ -685,9 +738,15 @@ def _merge_recipe(
         abv=existing.abv if existing.abv is not None else fetched.abv,
         ibu=existing.ibu if existing.ibu is not None else fetched.ibu,
         srm=existing.srm if existing.srm is not None else fetched.srm,
-        calories=existing.calories if existing.calories is not None else fetched.calories,
-        batch_size=existing.batch_size if existing.batch_size is not None else fetched.batch_size,
-        boil_time=existing.boil_time if existing.boil_time is not None else fetched.boil_time,
+        calories=existing.calories
+        if existing.calories is not None
+        else fetched.calories,
+        batch_size=existing.batch_size
+        if existing.batch_size is not None
+        else fetched.batch_size,
+        boil_time=existing.boil_time
+        if existing.boil_time is not None
+        else fetched.boil_time,
         og=existing.og if existing.og is not None else fetched.og,
         fg=existing.fg if existing.fg is not None else fetched.fg,
         fermentables=existing.fermentables or fetched.fermentables,
@@ -737,17 +796,23 @@ def brew_session_unique_fragment(session: GrainfatherBrewSession) -> str:
 
 
 def brew_session_display_name(session: GrainfatherBrewSession) -> str:
-    batch_number = str(session.batch_number) if session.batch_number is not None else "-"
+    batch_number = (
+        str(session.batch_number) if session.batch_number is not None else "-"
+    )
     batch_id = str(session.batch_id) if session.batch_id is not None else "-"
     name = session.session_name or session.recipe_name or "-"
     return f"{batch_number} {batch_id} {name}"
 
 
-def parse_fermentation_steps_payload(payload: list[dict[str, Any]]) -> tuple[GrainfatherFermentationStep, ...]:
+def parse_fermentation_steps_payload(
+    payload: list[dict[str, Any]],
+) -> tuple[GrainfatherFermentationStep, ...]:
     return tuple(parse_fermentation_step_payload(item) for item in payload if item)
 
 
-def parse_fermentation_step_payload(payload: dict[str, Any]) -> GrainfatherFermentationStep:
+def parse_fermentation_step_payload(
+    payload: dict[str, Any],
+) -> GrainfatherFermentationStep:
     return GrainfatherFermentationStep(
         step_id=_to_int(_first_value(payload, "id")),
         name=_first_value(payload, "name"),
@@ -760,14 +825,18 @@ def parse_fermentation_step_payload(payload: dict[str, Any]) -> GrainfatherFerme
     )
 
 
-def parse_equipment_profiles_payload(payload: Any) -> tuple[GrainfatherEquipmentProfile, ...]:
+def parse_equipment_profiles_payload(
+    payload: Any,
+) -> tuple[GrainfatherEquipmentProfile, ...]:
     if not isinstance(payload, list):
         return tuple()
 
     return tuple(parse_equipment_profile_payload(item) for item in payload if item)
 
 
-def parse_equipment_profile_payload(payload: dict[str, Any]) -> GrainfatherEquipmentProfile:
+def parse_equipment_profile_payload(
+    payload: dict[str, Any],
+) -> GrainfatherEquipmentProfile:
     return GrainfatherEquipmentProfile(
         profile_id=_to_int(_first_value(payload, "id")),
         name=_first_value(payload, "name"),
@@ -781,20 +850,26 @@ def parse_equipment_profile_payload(payload: dict[str, Any]) -> GrainfatherEquip
     )
 
 
-def parse_fermentation_devices_payload(payload: Any) -> tuple[GrainfatherFermentationDevice, ...]:
+def parse_fermentation_devices_payload(
+    payload: Any,
+) -> tuple[GrainfatherFermentationDevice, ...]:
     if not isinstance(payload, list):
         return tuple()
 
     return tuple(parse_fermentation_device_payload(item) for item in payload if item)
 
 
-def parse_fermentation_device_payload(payload: dict[str, Any]) -> GrainfatherFermentationDevice:
+def parse_fermentation_device_payload(
+    payload: dict[str, Any],
+) -> GrainfatherFermentationDevice:
     brew_session_payload = payload.get("brew_session") or {}
 
     return GrainfatherFermentationDevice(
         device_id=_to_int(_first_value(payload, "id")),
         name=_first_value(payload, "name"),
-        fermentation_device_type_id=_to_int(_first_value(payload, "fermentation_device_type_id")),
+        fermentation_device_type_id=_to_int(
+            _first_value(payload, "fermentation_device_type_id")
+        ),
         linked_brew_session_id=_to_int(_first_value(payload, "brew_session_id")),
         linked_brew_session_name=_first_value(brew_session_payload, "session_name"),
         last_heard=_first_value(payload, "last_heard"),
@@ -828,7 +903,9 @@ def parse_fermentation_device_history_points(
             continue
 
         brew_session_id = _to_int(
-            _first_value(item, "brew_session_id", "brewSessionId", "batch_id", "batchId")
+            _first_value(
+                item, "brew_session_id", "brewSessionId", "batch_id", "batchId"
+            )
         )
         timestamp = _first_value(
             item,
@@ -842,7 +919,9 @@ def parse_fermentation_device_history_points(
             "time",
             "last_heard",
         )
-        temperature = _to_float(_first_value(item, "temperature", "temp", "last_temperature"))
+        temperature = _to_float(
+            _first_value(item, "temperature", "temp", "last_temperature")
+        )
         specific_gravity = _to_float(
             _first_value(
                 item,
@@ -858,7 +937,11 @@ def parse_fermentation_device_history_points(
             _first_value(item, "target_temperature", "targetTemperature")
         )
 
-        if temperature is None and specific_gravity is None and target_temperature is None:
+        if (
+            temperature is None
+            and specific_gravity is None
+            and target_temperature is None
+        ):
             continue
 
         points.append(
@@ -915,8 +998,10 @@ def _select_active_brew_session(payload: dict[str, Any]) -> dict[str, Any] | Non
     active_sessions = [session for session in sessions if session.get("is_active")]
     candidates = active_sessions or sessions
     candidates.sort(
-        key=lambda session: _parse_datetime(session.get("updated_at"))
-        or datetime.min.replace(tzinfo=timezone.utc),
+        key=lambda session: (
+            _parse_datetime(session.get("updated_at"))
+            or datetime.min.replace(tzinfo=UTC)
+        ),
         reverse=True,
     )
     return candidates[0]
@@ -926,7 +1011,8 @@ def _assert_fermentation_steps_editable(payload: dict[str, Any]) -> None:
     status = _to_int(_first_value(payload, "status", "state"))
     if status is None or status >= 30:
         raise GrainfatherApiError(
-            "Fermentation steps can only be changed when brew session status is below conditioning"
+            "Fermentation steps can only be changed when brew session status "
+            "is below conditioning"
         )
 
 

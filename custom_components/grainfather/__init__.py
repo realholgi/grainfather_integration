@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from aiohttp import ClientSession
+import homeassistant.helpers.config_validation as cv
+import homeassistant.helpers.device_registry as dr
+import homeassistant.helpers.entity_registry as er
 import voluptuous as vol
-
+from aiohttp import ClientSession
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
@@ -13,9 +15,33 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-import homeassistant.helpers.config_validation as cv
-import homeassistant.helpers.device_registry as dr
-import homeassistant.helpers.entity_registry as er
+
+from .api import GrainfatherApiClient, brew_session_unique_fragment
+from .const import (
+    CONF_BREW_SESSION_ID,
+    CONF_DURATION_MINUTES,
+    CONF_EMAIL,
+    CONF_ENTRY_ID,
+    CONF_FERMENTATION_STEPS,
+    CONF_FINISH_TEMPERATURE,
+    CONF_IS_RAMP_STEP,
+    CONF_PASSWORD,
+    CONF_RECIPE_ID,
+    CONF_STATUS,
+    CONF_STEP_INDEX,
+    CONF_TEMPERATURE,
+    DOMAIN,
+    SERVICE_ADJUST_CURRENT_STEP_DURATION,
+    SERVICE_ADJUST_CURRENT_STEP_TEMPERATURE,
+    SERVICE_ADVANCE_TO_NEXT_FERMENTATION_STEP,
+    SERVICE_CLEAR_FERMENTATION_STEP_FINISH_TEMPERATURE,
+    SERVICE_SET_BREW_SESSION_STATUS,
+    SERVICE_SET_FERMENTATION_STEP_DURATION,
+    SERVICE_SET_FERMENTATION_STEPS,
+    normalize_brew_session_status,
+)
+from .coordinator import GrainfatherDataUpdateCoordinator
+from .history_importer import GrainfatherHistoryImporter
 
 _CARD_URL = "/grainfather/grainfather-brew-session-card-v2.js"
 _CARD_PATH = Path(__file__).parent / "www" / "grainfather-brew-session-card-v2.js"
@@ -34,34 +60,6 @@ _FERM_DEVICE_CARD_PATH = (
 _CARD_RESOURCES_KEY = f"{__name__}_card_registered"
 _CARD_FRONTEND_KEY = f"{__name__}_card_frontend_registered"
 
-from .api import GrainfatherApiClient
-from .const import (
-    CONF_INCLUDE_COMPLETED_SESSIONS,
-    SERVICE_ADJUST_CURRENT_STEP_DURATION,
-    SERVICE_ADJUST_CURRENT_STEP_TEMPERATURE,
-    SERVICE_ADVANCE_TO_NEXT_FERMENTATION_STEP,
-    SERVICE_CLEAR_FERMENTATION_STEP_FINISH_TEMPERATURE,
-    CONF_BREW_SESSION_ID,
-    CONF_DURATION_MINUTES,
-    CONF_EMAIL,
-    CONF_ENTRY_ID,
-    CONF_FERMENTATION_STEPS,
-    CONF_FINISH_TEMPERATURE,
-    CONF_IS_RAMP_STEP,
-    CONF_PASSWORD,
-    CONF_RECIPE_ID,
-    CONF_STATUS,
-    CONF_STEP_INDEX,
-    CONF_TEMPERATURE,
-    DOMAIN,
-    SERVICE_SET_BREW_SESSION_STATUS,
-    SERVICE_SET_FERMENTATION_STEP_DURATION,
-    SERVICE_SET_FERMENTATION_STEPS,
-    DEFAULT_INCLUDE_COMPLETED_SESSIONS,
-    normalize_brew_session_status,
-)
-from .coordinator import GrainfatherDataUpdateCoordinator
-from .api import brew_session_unique_fragment
 
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
@@ -178,19 +176,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     coordinator = GrainfatherDataUpdateCoordinator(hass, api, entry)
     await coordinator.async_config_entry_first_refresh()
+    history_importer = GrainfatherHistoryImporter(hass, api, entry)
 
     await _async_prune_stale_registry_entries(hass, entry, coordinator)
 
     def _async_handle_coordinator_update() -> None:
-        hass.async_create_task(_async_prune_stale_registry_entries(hass, entry, coordinator))
+        hass.async_create_task(
+            _async_prune_stale_registry_entries(hass, entry, coordinator)
+        )
+        history_importer.async_import_recent_history(coordinator.data)
 
-    entry.async_on_unload(coordinator.async_add_listener(_async_handle_coordinator_update))
+    entry.async_on_unload(
+        coordinator.async_add_listener(_async_handle_coordinator_update)
+    )
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
     _async_register_services(hass)
     await _async_create_helpers(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    entry.async_create_background_task(
+        hass,
+        history_importer.async_import_full_history(coordinator.data),
+        name=f"{DOMAIN}_history_import_{entry.entry_id}",
+    )
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
 
@@ -209,7 +218,9 @@ async def _async_register_card_resources(hass: HomeAssistant) -> None:
         return
     await hass.http.async_register_static_paths(
         [
-            StaticPathConfig(url_path=_CARD_URL, path=str(_CARD_PATH), cache_headers=False),
+            StaticPathConfig(
+                url_path=_CARD_URL, path=str(_CARD_PATH), cache_headers=False
+            ),
             StaticPathConfig(
                 url_path=_CARD_V3_URL,
                 path=str(_CARD_V3_PATH),
@@ -247,7 +258,9 @@ async def _async_remove_legacy_image_entities(
     entry: ConfigEntry,
 ) -> None:
     entity_registry = er.async_get(hass)
-    for entity_entry in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+    for entity_entry in er.async_entries_for_config_entry(
+        entity_registry, entry.entry_id
+    ):
         if entity_entry.domain == Platform.IMAGE:
             entity_registry.async_remove(entity_entry.entity_id)
 
@@ -269,7 +282,9 @@ async def _async_remove_stale_session_entities(
     }
     prefix = f"{entry.entry_id}_session_"
 
-    for entity_entry in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+    for entity_entry in er.async_entries_for_config_entry(
+        entity_registry, entry.entry_id
+    ):
         unique_id = entity_entry.unique_id or ""
         if not unique_id.startswith(prefix):
             continue
@@ -306,7 +321,9 @@ async def _async_remove_stale_fermentation_device_entities(
     }
     prefix = f"{entry.entry_id}_fermdevice_"
 
-    for entity_entry in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+    for entity_entry in er.async_entries_for_config_entry(
+        entity_registry, entry.entry_id
+    ):
         unique_id = entity_entry.unique_id or ""
         if not unique_id.startswith(prefix):
             continue
@@ -339,7 +356,9 @@ async def _async_remove_orphan_grainfather_devices(
         if device.device_id is not None
     )
 
-    for device_entry in dr.async_entries_for_config_entry(device_registry, entry.entry_id):
+    for device_entry in dr.async_entries_for_config_entry(
+        device_registry, entry.entry_id
+    ):
         grainfather_identifiers = {
             identifier
             for domain, identifier in device_entry.identifiers
@@ -358,7 +377,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not hass.data[DOMAIN]:
             hass.services.async_remove(DOMAIN, SERVICE_ADJUST_CURRENT_STEP_TEMPERATURE)
             hass.services.async_remove(DOMAIN, SERVICE_ADJUST_CURRENT_STEP_DURATION)
-            hass.services.async_remove(DOMAIN, SERVICE_ADVANCE_TO_NEXT_FERMENTATION_STEP)
+            hass.services.async_remove(
+                DOMAIN, SERVICE_ADVANCE_TO_NEXT_FERMENTATION_STEP
+            )
             hass.services.async_remove(DOMAIN, SERVICE_SET_BREW_SESSION_STATUS)
             hass.services.async_remove(DOMAIN, SERVICE_SET_FERMENTATION_STEPS)
             hass.services.async_remove(DOMAIN, SERVICE_SET_FERMENTATION_STEP_DURATION)
@@ -461,12 +482,16 @@ def _async_register_services(hass: HomeAssistant) -> None:
                     "Cannot resolve recipe_id or batch_id for this session"
                 )
 
-            step_index, current_step, minutes_elapsed, _ = _resolve_current_fermentation_step(session)
+            step_index, current_step, minutes_elapsed, _ = (
+                _resolve_current_fermentation_step(session)
+            )
             if step_index >= len(session.fermentation_steps) - 1:
-                raise HomeAssistantError("Current fermentation step is already the last step")
+                raise HomeAssistantError(
+                    "Current fermentation step is already the last step"
+                )
 
-            # Move schedule boundary to now by shortening current step to elapsed minutes.
-            # If fermentation just started, minimum duration of 1 minute is used.
+            # Move schedule boundary to now by shortening the current step to
+            # elapsed minutes. If fermentation just started, use one minute.
             new_duration = max(1, int(minutes_elapsed))
             if current_step.duration is not None:
                 new_duration = min(int(current_step.duration), new_duration)
@@ -537,7 +562,6 @@ def _async_register_services(hass: HomeAssistant) -> None:
             schema=SET_FERMENTATION_STEPS_SCHEMA,
         )
 
-
     if not hass.services.has_service(DOMAIN, SERVICE_SET_FERMENTATION_STEP_DURATION):
 
         async def async_handle_set_fermentation_step_duration(service_call) -> None:
@@ -570,7 +594,9 @@ def _async_register_services(hass: HomeAssistant) -> None:
         DOMAIN, SERVICE_CLEAR_FERMENTATION_STEP_FINISH_TEMPERATURE
     ):
 
-        async def async_handle_clear_fermentation_step_finish_temperature(service_call) -> None:
+        async def async_handle_clear_fermentation_step_finish_temperature(
+            service_call,
+        ) -> None:
             coordinator = _get_coordinator(hass, service_call.data.get(CONF_ENTRY_ID))
             recipe_id, brew_session_id = _resolve_batch_target(
                 coordinator,
@@ -672,7 +698,9 @@ def _get_coordinator(
     hass: HomeAssistant,
     entry_id: str | None,
 ) -> GrainfatherDataUpdateCoordinator:
-    coordinators: dict[str, GrainfatherDataUpdateCoordinator] = hass.data.get(DOMAIN, {})
+    coordinators: dict[str, GrainfatherDataUpdateCoordinator] = hass.data.get(
+        DOMAIN, {}
+    )
     if not coordinators:
         raise HomeAssistantError("No Grainfather entries are loaded")
 
@@ -698,7 +726,10 @@ def _resolve_batch_target(
         if recipe_id is not None:
             return recipe_id, brew_session_id
         for session in sessions:
-            if session.batch_id is not None and int(session.batch_id) == brew_session_id:
+            if (
+                session.batch_id is not None
+                and int(session.batch_id) == brew_session_id
+            ):
                 if session.recipe_id is None:
                     raise HomeAssistantError(
                         f"Cannot resolve recipe_id for session {brew_session_id}"
@@ -708,7 +739,11 @@ def _resolve_batch_target(
 
     # Default to first fermenting session, then first session in list
     for session in sessions:
-        if session.status == 20 and session.recipe_id is not None and session.batch_id is not None:
+        if (
+            session.status == 20
+            and session.recipe_id is not None
+            and session.batch_id is not None
+        ):
             return session.recipe_id, int(session.batch_id)
 
     first = sessions[0]
@@ -732,7 +767,8 @@ def _validate_step_field_update_request(value: dict) -> dict:
         return value
 
     raise vol.Invalid(
-        "At least one field must be provided: duration_minutes, temperature, is_ramp_step, or finish_temperature"
+        "At least one field must be provided: duration_minutes, temperature, "
+        "is_ramp_step, or finish_temperature"
     )
 
 
@@ -741,7 +777,9 @@ def _find_session_by_batch_id(
     brew_session_id: int,
 ):
     for session in coordinator.data.brew_sessions:
-        if session.batch_id is not None and int(session.batch_id) == int(brew_session_id):
+        if session.batch_id is not None and int(session.batch_id) == int(
+            brew_session_id
+        ):
             return session
     return None
 
@@ -756,7 +794,7 @@ def _resolve_current_fermentation_step(session):
         # If no start date is known, default to first step.
         return 0, steps[0], 0.0, float(steps[0].duration or 0)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     elapsed_total = max(0.0, (now - fermentation_start).total_seconds() / 60.0)
 
     cursor = 0.0
@@ -783,5 +821,5 @@ def _parse_datetime_utc(value: str | None) -> datetime | None:
         return None
 
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)

@@ -7,7 +7,7 @@ plain-``pytest`` style used for the API parsing tests.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from .const import (
@@ -40,7 +40,7 @@ def _parse_timestamp(value: str | None) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed
 
 
@@ -62,14 +62,16 @@ def snapshot_is_active(
     controller is linked and was heard from recently.
     """
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
     for session in snapshot.brew_sessions:
         if session.status in ACTIVE_BREW_SESSION_STATUSES:
             return True
 
     for device in snapshot.fermentation_devices:
-        if device.is_controller_linked and _device_recently_heard(device.last_heard, now):
+        if device.is_controller_linked and _device_recently_heard(
+            device.last_heard, now
+        ):
             return True
 
     return False

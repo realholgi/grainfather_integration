@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import logging
+from datetime import UTC, datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -65,9 +65,7 @@ class GrainfatherDataUpdateCoordinator(DataUpdateCoordinator[GrainfatherSnapshot
 
     def note_user_action(self) -> None:
         """Record a user action: boost the poll cadence and refresh immediately."""
-        self._boost_until = datetime.now(timezone.utc) + timedelta(
-            seconds=POLL_BOOST_SECONDS
-        )
+        self._boost_until = datetime.now(UTC) + timedelta(seconds=POLL_BOOST_SECONDS)
         self.hass.async_create_task(self.async_request_refresh())
 
     async def _async_update_data(self) -> GrainfatherSnapshot:
@@ -93,7 +91,7 @@ class GrainfatherDataUpdateCoordinator(DataUpdateCoordinator[GrainfatherSnapshot
 
     def _reschedule(self, snapshot: GrainfatherSnapshot) -> None:
         """Pick the next poll interval based on activity and any active boost."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         boosted = is_boost_active(self._boost_until, now)
         self.update_interval = compute_update_interval(
             snapshot,

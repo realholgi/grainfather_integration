@@ -3,11 +3,14 @@ from __future__ import annotations
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import GrainfatherApiClient, GrainfatherAuthenticationError, GrainfatherApiError
+from .api import (
+    GrainfatherApiClient,
+    GrainfatherApiError,
+    GrainfatherAuthenticationError,
+)
 from .const import (
     CONF_ACTIVE_SCAN_INTERVAL,
     CONF_DEFAULT_DENSITY_UNIT,
@@ -51,7 +54,9 @@ class GrainfatherConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except GrainfatherApiError:
                 errors["base"] = "cannot_connect"
             else:
-                return self.async_create_entry(title=user_input[CONF_EMAIL], data=user_input)
+                return self.async_create_entry(
+                    title=user_input[CONF_EMAIL], data=user_input
+                )
 
         return self.async_show_form(
             step_id="user",
@@ -119,4 +124,3 @@ class GrainfatherOptionsFlow(config_entries.OptionsFlow):
                 }
             ),
         )
-

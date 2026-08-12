@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 from custom_components.grainfather.const import (
@@ -12,7 +12,7 @@ from custom_components.grainfather.polling import (
     snapshot_is_active,
 )
 
-NOW = datetime(2026, 8, 7, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 7, 12, 0, 0, tzinfo=UTC)
 
 
 def _session(status):
@@ -56,9 +56,7 @@ def test_snapshot_is_active_when_controller_recently_heard() -> None:
 
 def test_snapshot_is_inactive_when_controller_heard_long_ago() -> None:
     stale = (NOW - timedelta(hours=5)).isoformat()
-    snapshot = _snapshot(
-        devices=[_device(is_controller_linked=True, last_heard=stale)]
-    )
+    snapshot = _snapshot(devices=[_device(is_controller_linked=True, last_heard=stale)])
 
     assert snapshot_is_active(snapshot, now=NOW) is False
 
@@ -167,27 +165,21 @@ def test_snapshot_active_at_device_recent_boundary() -> None:
 
 def test_snapshot_inactive_just_past_device_recent_boundary() -> None:
     stale = (NOW - timedelta(seconds=DEVICE_RECENT_SECONDS + 1)).isoformat()
-    snapshot = _snapshot(
-        devices=[_device(is_controller_linked=True, last_heard=stale)]
-    )
+    snapshot = _snapshot(devices=[_device(is_controller_linked=True, last_heard=stale)])
 
     assert snapshot_is_active(snapshot, now=NOW) is False
 
 
 def test_snapshot_active_with_naive_last_heard_assumed_utc() -> None:
     naive = (NOW - timedelta(minutes=5)).replace(tzinfo=None).isoformat()
-    snapshot = _snapshot(
-        devices=[_device(is_controller_linked=True, last_heard=naive)]
-    )
+    snapshot = _snapshot(devices=[_device(is_controller_linked=True, last_heard=naive)])
 
     assert snapshot_is_active(snapshot, now=NOW) is True
 
 
 def test_snapshot_active_with_zulu_last_heard() -> None:
     zulu = (NOW - timedelta(minutes=5)).replace(tzinfo=None).isoformat() + "Z"
-    snapshot = _snapshot(
-        devices=[_device(is_controller_linked=True, last_heard=zulu)]
-    )
+    snapshot = _snapshot(devices=[_device(is_controller_linked=True, last_heard=zulu)])
 
     assert snapshot_is_active(snapshot, now=NOW) is True
 

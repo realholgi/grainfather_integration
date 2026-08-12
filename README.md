@@ -57,6 +57,40 @@ The implementation is based on the API shape described in [docs/api.md](docs/api
 
 See [docs/api.md](docs/api.md) for the full Grainfather cloud API reference.
 
+### Historic Fermentation Statistics
+
+On every integration load, Grainfather history is imported into Home Assistant
+Recorder as hourly external statistics. The import covers active and completed
+batches and is repaired on later reloads; it does not depend on the
+`include_completed_sessions` entity option.
+
+Each batch with measurements can produce these statistic IDs:
+
+- `grainfather:<entry_id>_batch_<batch_id>_temperature` (`°C`)
+- `grainfather:<entry_id>_batch_<batch_id>_specific_gravity` (`SG`)
+- `grainfather:<entry_id>_batch_<batch_id>_plato` (`°P`)
+
+`<entry_id>` is Home Assistant's slugged config-entry ID and `<batch_id>` is
+the Grainfather brew-session ID. Use **Developer Tools → Statistics** to find
+the exact IDs. Temperature, specific gravity, and Plato are stored as hourly
+mean, minimum, and maximum values. Plato is calculated from SG using the same
+one-decimal conversion as the live sensors.
+
+Use a `statistics-graph` card to chart a completed fermentation:
+
+```yaml
+type: statistics-graph
+title: Batch fermentation
+chart_type: line
+period: hour
+entities:
+  - "grainfather:<entry_id>_batch_<batch_id>_temperature"
+  - "grainfather:<entry_id>_batch_<batch_id>_plato"
+```
+
+Replace the example statistic IDs with the values returned by the Statistics
+developer tool.
+
 ### Adaptive Polling
 
 The Grainfather cloud API is REST-only, so the integration polls it on a schedule.
@@ -236,7 +270,7 @@ Home Assistant only uses local custom integration branding from `brand/` startin
 ## Development
 
 - [custom_components/grainfather](custom_components/grainfather) contains the integration source
-- [tests](tests) contains API parsing tests
+- [tests](tests) contains API, coordinator, and history-importer tests
 - [pyproject.toml](pyproject.toml) contains local tooling configuration
 - [docs/api.md](docs/api.md) documents the Grainfather cloud API used by the integration
 

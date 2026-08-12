@@ -38,7 +38,9 @@ async def async_setup_entry(
         if new_entities:
             async_add_entities(new_entities)
 
-    entry.async_on_unload(coordinator.async_add_listener(_async_handle_coordinator_update))
+    entry.async_on_unload(
+        coordinator.async_add_listener(_async_handle_coordinator_update)
+    )
 
 
 def _build_number_entities(
@@ -52,7 +54,8 @@ def _build_number_entities(
         session_fragment = brew_session_unique_fragment(session)
         for step_index in range(len(session.fermentation_steps)):
             duration_unique_id = (
-                f"{entry.entry_id}_session_{session_fragment}_step_{step_index}_duration"
+                f"{entry.entry_id}_session_{session_fragment}_"
+                f"step_{step_index}_duration"
             )
             if duration_unique_id not in known_unique_ids:
                 known_unique_ids.add(duration_unique_id)
@@ -67,7 +70,8 @@ def _build_number_entities(
                 )
 
             temperature_unique_id = (
-                f"{entry.entry_id}_session_{session_fragment}_step_{step_index}_temperature"
+                f"{entry.entry_id}_session_{session_fragment}_"
+                f"step_{step_index}_temperature"
             )
             if temperature_unique_id not in known_unique_ids:
                 known_unique_ids.add(temperature_unique_id)
@@ -82,7 +86,8 @@ def _build_number_entities(
                 )
 
             finish_temperature_unique_id = (
-                f"{entry.entry_id}_session_{session_fragment}_step_{step_index}_finish_temperature"
+                f"{entry.entry_id}_session_{session_fragment}_"
+                f"step_{step_index}_finish_temperature"
             )
             if finish_temperature_unique_id not in known_unique_ids:
                 known_unique_ids.add(finish_temperature_unique_id)
@@ -122,7 +127,8 @@ class GrainfatherFermentationStepDurationNumber(
         self._step_index = step_index
         self._attr_has_entity_name = True
         self._attr_unique_id = (
-            f"{entry.entry_id}_session_{session_unique_fragment}_step_{step_index}_duration"
+            f"{entry.entry_id}_session_{session_unique_fragment}_"
+            f"step_{step_index}_duration"
         )
 
     @property
@@ -216,7 +222,8 @@ class GrainfatherFermentationStepTemperatureNumber(
         self._step_index = step_index
         self._attr_has_entity_name = True
         self._attr_unique_id = (
-            f"{entry.entry_id}_session_{session_unique_fragment}_step_{step_index}_temperature"
+            f"{entry.entry_id}_session_{session_unique_fragment}_"
+            f"step_{step_index}_temperature"
         )
 
     @property
@@ -306,7 +313,8 @@ class GrainfatherFermentationStepFinishTemperatureNumber(
         self._step_index = step_index
         self._attr_has_entity_name = True
         self._attr_unique_id = (
-            f"{entry.entry_id}_session_{session_unique_fragment}_step_{step_index}_finish_temperature"
+            f"{entry.entry_id}_session_{session_unique_fragment}_"
+            f"step_{step_index}_finish_temperature"
         )
 
     @property

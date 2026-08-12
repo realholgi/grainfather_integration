@@ -47,19 +47,19 @@ SERVICE_ADJUST_CURRENT_STEP_DURATION = "adjust_current_step_duration"
 SERVICE_ADVANCE_TO_NEXT_FERMENTATION_STEP = "advance_to_next_fermentation_step"
 
 BREW_SESSION_STATUS_MAP = {
-	"planning": 5,
-	"brewing": 10,
-	"fermenting": 20,
-	"conditioning": 30,
-	"serving": 35,
-    "completed": BREW_SESSION_STATUS_COMPLETED
+    "planning": 5,
+    "brewing": 10,
+    "fermenting": 20,
+    "conditioning": 30,
+    "serving": 35,
+    "completed": BREW_SESSION_STATUS_COMPLETED,
 }
 
 BREW_SESSION_STATUS_NAME_BY_CODE = {
-	5: "planning",
-	10: "brewing",
-	20: "fermenting",
-	30: "conditioning",
+    5: "planning",
+    10: "brewing",
+    20: "fermenting",
+    30: "conditioning",
     35: "serving",
     BREW_SESSION_STATUS_COMPLETED: "completed",
 }
