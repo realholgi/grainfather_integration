@@ -265,6 +265,10 @@ The integration registers these service actions:
 1. `grainfather.set_brew_session_status`
 2. `grainfather.set_fermentation_steps`
 3. `grainfather.set_fermentation_step_duration`
+4. `grainfather.clear_fermentation_step_finish_temperature`
+5. `grainfather.adjust_current_step_temperature`
+6. `grainfather.adjust_current_step_duration`
+7. `grainfather.advance_to_next_fermentation_step`
 
 `grainfather.set_brew_session_status` accepts a `status` as either a numeric code or one of:
 
@@ -287,7 +291,7 @@ Home Assistant only uses local custom integration branding from `brand/` startin
 ## Development
 
 - [custom_components/grainfather](custom_components/grainfather) contains the integration source
-- [tests](tests) contains API, coordinator, and history-importer tests
+- [tests](tests) contains API, config-flow, Home Assistant runtime, coordinator, control, and history-importer tests
 - [pyproject.toml](pyproject.toml) contains local tooling configuration
 - [docs/api.md](docs/api.md) documents the Grainfather cloud API used by the integration
 
@@ -309,24 +313,21 @@ The repository includes several custom JavaScript cards in [custom_components/gr
   - fixed cards per row (`cards_per_row`)
   - auto-fit mode with minimum card width (`card_min_width`)
 
+Custom-card resources are registered automatically when the integration loads.
+
 **Example configuration:**
 
 ```yaml
-resources:
-  - url: /grainfather/grainfather-brew-collection-card.js
-    type: module
-
-cards:
-  - type: custom:grainfather-brew-collection-card
-    title: Active Brews
-    entities:
-      - sensor.grainfather_batch_01_batch_number
-      - sensor.grainfather_batch_02_batch_number
-      - sensor.grainfather_batch_03_batch_number
-    card_type: brew-session-detailed
-    statuses: [fermenting, conditioning, serving]
-    deduplicate: false
-    group_by_status: true
+type: custom:grainfather-brew-collection-card
+title: Active Brews
+entities:
+  - sensor.grainfather_batch_01_batch_number
+  - sensor.grainfather_batch_02_batch_number
+  - sensor.grainfather_batch_03_batch_number
+card_type: brew-session-detailed
+statuses: [fermenting, conditioning, serving]
+deduplicate: false
+group_by_status: true
 ```
 
 **Configuration Options:**
@@ -377,17 +378,12 @@ clear when the device is unlinked or the linked session stops fermenting.
 - Supports `density_unit: default|sg|plato|brix` on all included brew session cards and the On Tap card
 - Mobile-friendly layout: ABV and gravity move to a second line to keep full beer names visible
 
-Example resource and card configuration:
+Custom-card resources are registered automatically when the integration loads.
 
 ```yaml
-resources:
-  - url: /grainfather/grainfather-on-tap-card.js
-    type: module
-
-cards:
-  - type: custom:grainfather-on-tap-card
-    max_items: 12
-    density_unit: sg
+type: custom:grainfather-on-tap-card
+max_items: 12
+density_unit: sg
 ```
 
 ## Dashboard UI Overview
@@ -418,25 +414,24 @@ Shows grouped fermentation-device cards for chambers, controllers, and pill sens
 
 ![Fermentation device cards grouped by hardware area](docs/images/fermentation_devices_cards.png)
 
-### Brew Collection With Detailed Card
+### Brew Session Detailed Card
 
-Shows side-by-side detailed session cards in the collection grid.
+Shows a detailed active fermentation session with live measurements, history charts,
+fermentation steps, and controls.
 
-![Brew collection card using detailed session cards in a grid](docs/images/brew_sessions_collection_with_detailed_card.png)
+![Detailed brew session card showing live fermentation data](docs/images/brew_sessions_collection_with_detailed_card.png)
 
 These examples reflect the current card behavior and layout options documented above.
 
 ## Current Limitations
 
-- The Grainfather cloud API is not officially documented here, so some payload assumptions are based on observed responses.
-- Test coverage is focused on payload parsing and client behavior, not full Home Assistant integration runtime behavior.
-- The Grainfather cloud API is REST-only and exposes no push channel (no websocket, MQTT, or webhook) to third parties, so the integration is `cloud_polling`. It compensates with state-aware adaptive polling (see below) rather than true server-side push.
+- The Grainfather cloud API is not officially documented, so some payload assumptions are based on observed responses.
+- The Grainfather cloud API is REST-only and exposes no push channel (no websocket, MQTT, or webhook) to third parties, so the integration is `cloud_polling`. It compensates with [state-aware adaptive polling](#adaptive-polling) rather than true server-side push.
 
 ## Roadmap
 
 1. Add fixture-based tests from captured real API responses.
-2. Validate the integration against a live Home Assistant development instance.
-3. Expand entity coverage once more Grainfather API fields and workflows are confirmed.
+2. Expand entity coverage once more Grainfather API fields and workflows are confirmed.
 
 ## Support The Project
 
