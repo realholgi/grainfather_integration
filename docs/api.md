@@ -312,9 +312,9 @@ a specific gravity are skipped.
 
 ## Additional endpoints (undocumented, verified live)
 
-These endpoints were discovered by probing the live API. They are **not used by
-the integration yet** but are documented here for future work. All require the
-`Authorization: Bearer <token>` header.
+These endpoints were discovered by probing the live API. All require the
+`Authorization: Bearer <token>` header. Except where noted, they are not used by
+the integration yet but are documented here for future work.
 
 ### `GET /users/me`
 
@@ -343,7 +343,10 @@ etc.). Accepts a `page` query parameter. Each `data` item is a full recipe objec
 
 ### `GET /recipes/{recipe_id}`
 
-Full detail for a single recipe. Notable fields _(verified live)_:
+Full detail for a single recipe. The integration calls this endpoint when a
+brew-session's embedded recipe lacks required metrics or ingredients; requests
+are cached per recipe ID for the duration of a snapshot refresh. Notable fields
+_(verified live)_:
 
 - Core: `id`, `name`, `description`, `notes`, `image_url`, `batch_size`,
   `boil_size`, `boil_time`, `efficiency`, `og`, `fg`, `srm`, `ibu`, `bggu`,
@@ -410,8 +413,11 @@ single snapshot the integration polls on a schedule:
 1. List all brew sessions (paginated).
 2. For each `fermenting` session (status `20`), fetch full detail to include
    fermentation steps.
-3. List fermentation devices.
-4. For each device, fetch the last 90 days of history and index the points both by
+3. For each brew session whose embedded recipe lacks required metrics or
+   ingredients, fetch full recipe detail once per recipe ID and merge it into the
+   session.
+4. List fermentation devices.
+5. For each device, fetch the last 90 days of history and index the points both by
    device ID and by linked brew session (batch) ID.
 
 ### Adaptive interval
