@@ -12,6 +12,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature, UnitOfTime, UnitOfVolume
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -35,6 +36,7 @@ from .const import (
 )
 from .coordinator import GrainfatherDataUpdateCoordinator
 from .density import sg_to_plato
+from .history_importer import batch_statistic_id
 
 _MAX_EXPOSED_BATCH_HISTORY_POINTS = 20
 _MAX_EXPOSED_DEVICE_HISTORY_POINTS = 5
@@ -413,11 +415,22 @@ def _session_batch_number_attributes(
     if batch_id_int is not None:
         history = snapshot.brew_session_history_by_batch_id.get(batch_id_int, tuple())
 
+    fermentation_devices = [
+        {
+            "device_id": device.device_id,
+            "name": device.name or f"Fermentation Device {device.device_id}",
+            "fermentation_device_type_id": device.fermentation_device_type_id,
+        }
+        for device in snapshot.fermentation_devices
+        if str(device.linked_brew_session_id) == str(session.batch_id)
+    ]
+
     return {
         "grainfather_entity_type": "brew_session",
         "batch_number": session.batch_number if session.batch_number is not None else 0,
         "batch_variant_name": session.batch_variant_name,
         "status": BREW_SESSION_STATUS_NAME_BY_CODE.get(session.status or -1, "unknown"),
+        "is_current_batch": session.status == 20,
         "brew_session_id": session.batch_id,
         "recipe_id": session.recipe_id,
         "session_name": session.session_name,
@@ -429,6 +442,7 @@ def _session_batch_number_attributes(
         "notes": _truncate_text(session.notes, _MAX_EXPOSED_NOTES_CHARS),
         "equipment_name": session.equipment_name,
         "fermentation_device_ids": list(session.fermentation_device_ids),
+        "fermentation_devices": fermentation_devices,
         "fermentation_steps": [
             {
                 "index": i,
@@ -527,8 +541,19 @@ def _build_sensor_entities(
             )
 
     for device in coordinator.data.fermentation_devices:
+
         if device.device_id is None:
             continue
+        active_charge_unique_id = (
+            f"{entry.entry_id}_fermdevice_{device.device_id}_active_charge"
+        )
+        if active_charge_unique_id not in known_unique_ids:
+            known_unique_ids.add(active_charge_unique_id)
+            entities.append(
+                GrainfatherFermDeviceActiveChargeSensor(
+                    coordinator, entry, device.device_id
+                )
+            )
 
         temp_unique_id = f"{entry.entry_id}_fermdevice_{device.device_id}_temperature"
         if temp_unique_id not in known_unique_ids:
@@ -626,6 +651,24 @@ class GrainfatherSessionSensor(
         attrs = self.entity_description.attributes_fn(session, self.coordinator.data)
         if attrs is None:
             return None
+        if self.entity_description.key == "batch_number":
+            try:
+                batch_id = int(session.batch_id)
+            except (TypeError, ValueError):
+                pass
+            else:
+                attrs.update(
+                    {
+                        f"{metric}_statistic_id": batch_statistic_id(
+                            self.coordinator.entry.entry_id, batch_id, metric
+                        )
+                        for metric in (
+                            "temperature",
+                            "specific_gravity",
+                            "plato",
+                        )
+                    }
+                )
         attrs["default_density_unit"] = self.coordinator.entry.options.get(
             CONF_DEFAULT_DENSITY_UNIT,
             DEFAULT_DENSITY_UNIT,
@@ -652,6 +695,97 @@ class GrainfatherSessionSensor(
         if session is None:
             return None
         return session.recipe_image_url
+
+
+class GrainfatherFermDeviceActiveChargeSensor(
+    CoordinatorEntity[GrainfatherDataUpdateCoordinator],
+    SensorEntity,
+):
+    """Reference the fermenting brew session linked to a device."""
+
+    _attr_translation_key = "fermdevice_active_charge"
+
+    def __init__(
+        self,
+        coordinator: GrainfatherDataUpdateCoordinator,
+        entry: ConfigEntry,
+        device_id: int,
+    ) -> None:
+        super().__init__(coordinator)
+        self._device_id = device_id
+        self._entry_id = entry.entry_id
+        self._attr_has_entity_name = True
+        self._attr_unique_id = f"{entry.entry_id}_fermdevice_{device_id}_active_charge"
+
+    @property
+    def _device(self) -> GrainfatherFermentationDevice | None:
+        return next(
+            (
+                device
+                for device in self.coordinator.data.fermentation_devices
+                if device.device_id == self._device_id
+            ),
+            None,
+        )
+
+    @property
+    def _session(self) -> GrainfatherBrewSession | None:
+        device = self._device
+        if device is None or device.linked_brew_session_id is None:
+            return None
+        return next(
+            (
+                session
+                for session in self.coordinator.data.brew_sessions
+                if str(session.batch_id) == str(device.linked_brew_session_id)
+                and session.status == 20
+            ),
+            None,
+        )
+
+    @property
+    def available(self) -> bool:
+        return self._device is not None
+
+    @property
+    def native_value(self) -> str | None:
+        session = self._session
+        if session is None:
+            return None
+        return session.session_name or session.recipe_name
+
+    @property
+    def device_info(self) -> DeviceInfo | None:
+        device = self._device
+        if device is None:
+            return None
+        return _ferm_device_info(device, self.coordinator.data)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        session = self._session
+        if session is None:
+            return None
+        session_unique_id = (
+            f"{self._entry_id}_session_{brew_session_unique_fragment(session)}_batch_number"
+        )
+        attrs: dict[str, Any] = {
+            "grainfather_entity_type": "fermentation_device_active_charge",
+            "brew_session_id": session.batch_id,
+            "brew_session_unique_id": session_unique_id,
+            "status": BREW_SESSION_STATUS_NAME_BY_CODE.get(
+                session.status or -1, "unknown"
+            ),
+            "is_current_batch": True,
+        }
+        hass = getattr(self, "hass", None)
+        if hass is not None:
+            entity_id = er.async_get(hass).async_get_entity_id(
+                "sensor", DOMAIN, session_unique_id
+            )
+            if entity_id is not None:
+                attrs["brew_session_entity_id"] = entity_id
+        return attrs
 
 
 class GrainfatherFermDeviceTemperatureSensor(

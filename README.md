@@ -76,6 +76,23 @@ the exact IDs. Temperature, specific gravity, and Plato are stored as hourly
 mean, minimum, and maximum values. Plato is calculated from SG using the same
 one-decimal conversion as the live sensors.
 
+A brew-session **Batch Number** entity is the canonical batch anchor. Its
+`status` is `fermenting` and `is_current_batch` is `true` only for a current
+charge. Its `fermentation_devices` attribute lists the currently linked
+fermentation devices, while `fermentation_device_ids` preserves the API's
+reported membership. The anchor exposes immutable `temperature_statistic_id`,
+`specific_gravity_statistic_id`, and `plato_statistic_id` attributes for
+history graphs.
+
+Fermentation-device sensors represent live hardware only: temperature, gravity,
+Plato, and controller target temperature where available. Each device also has
+an **Active Charge** reference sensor while it is linked to a fermenting
+session. Its state is the session or recipe name; `brew_session_unique_id`
+always identifies the canonical Batch Number anchor and
+`brew_session_entity_id` is provided when its Home Assistant entity ID is
+available. It does not copy batch data. Multiple sessions may ferment
+concurrently; each has its own canonical batch anchor.
+
 Use a `statistics-graph` card to chart a completed fermentation:
 
 ```yaml
@@ -339,8 +356,16 @@ Key capabilities:
 - Immediate UI response (optimistic updates) for temperature/duration step changes
 - Debounced batching of rapid adjustments
 - Absolute-value backend updates for safer multi-dashboard use
+- Linked recipe name in the card title
 - Optional fermentation steps list (`show_fermentation_steps`)
+- Optional temperature, duration, and next-step control panel (`show_controls`)
+- Enabled-by-default batch-anchored temperature and Plato history graphs
+  (`show_graphs: false` keeps the compact live-telemetry card)
 - Current-step highlighting only when status is `fermenting`
+
+The graphs query the linked fermenting brew-session Batch Number entity's
+immutable Recorder statistic IDs, not the stable live sensor histories. They
+clear when the device is unlinked or the linked session stops fermenting.
 
 ### On Tap Blackboard Card
 

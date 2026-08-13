@@ -23,9 +23,28 @@ const CARD_I18N = {
     time_left: 'TIME LEFT',
     abv: '% Alc',
     total_time_left: 'Total time left',
+    fermentation_steps: 'Fermentation steps',
+    next_step: 'Next Step',
     no_session: 'No active session',
+    no_active_brew_session: 'No active brew session',
     not_found: 'not found.',
     editor_pick_entity: 'Choose a Grainfather fermentation device.',
+    unknown: '—',
+  },
+  de: {
+    current_temp: 'AKTUELLE TEMP.',
+    target_temp: 'ZIELTEMPERATUR',
+    gravity: 'DICHTE',
+    stage: 'STUFE',
+    time_left: 'VERBLEIBEND',
+    abv: '% Alk.',
+    total_time_left: 'Gesamt verbleibend',
+    fermentation_steps: 'Gärschritte',
+    next_step: 'Nächster Schritt',
+    no_session: 'Keine aktive Charge',
+    no_active_brew_session: 'Keine aktive Brausession',
+    not_found: 'nicht gefunden.',
+    editor_pick_entity: 'Wähle ein Grainfather-Gärgerät.',
     unknown: '—',
   },
   pl: {
@@ -36,7 +55,10 @@ const CARD_I18N = {
     time_left: 'POZOSTAŁO',
     abv: '% Alk',
     total_time_left: 'Do końca',
+    fermentation_steps: 'Kroki fermentacji',
+    next_step: 'Następny krok',
     no_session: 'Brak aktywnej sesji',
+    no_active_brew_session: 'Brak aktywnej sesji warzenia',
     not_found: 'nie znaleziono.',
     editor_pick_entity: 'Wybierz urządzenie fermentacyjne Grainfather.',
     unknown: '—',
@@ -298,6 +320,9 @@ class GrainfatherFermentationDeviceCard extends LitElement {
     _config: { state: true },
     _tick: { state: true },
     _optimistic: { state: true },
+    _graphData: { state: true },
+    _graphLoading: { state: true },
+    _graphError: { state: true },
   };
 
   static styles = css`
@@ -594,6 +619,13 @@ class GrainfatherFermentationDeviceCard extends LitElement {
       color: var(--error-color, #ff6b6b);
       font-size: 0.9rem;
     }
+
+    .graph-section { margin: 0 8px 10px; display: grid; gap: 8px; }
+    .graph-panel { padding: 8px 10px; background: rgba(0,0,0,.20); border-radius: 10px; }
+    .graph-title { color: #8fa0b4; font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; }
+    .graph-empty { color: #8fa0b4; font-size: .8rem; min-height: 48px; display: grid; place-items: center; }
+    .graph-svg { display: block; width: 100%; height: auto; margin-top: 4px; }
+    .graph-label { fill: #8fa0b4; font-size: 22px; }
   `;
 
   constructor() {
@@ -602,6 +634,10 @@ class GrainfatherFermentationDeviceCard extends LitElement {
     this._config = {};
     this._tick = 0;
     this._optimistic = null;
+    this._graphData = null;
+    this._graphLoading = false;
+    this._graphError = false;
+    this._graphRequestKey = null;
     this._lastRenderSnapshot = null;
     this._pendingBySession = new Map();
     this._flushTimers = new Map();
@@ -635,16 +671,17 @@ class GrainfatherFermentationDeviceCard extends LitElement {
   _requestFermentationRefresh() {
     const entityId = this._resolveTemperatureEntityId();
     if (!entityId || !this.hass) return;
-    const attrs = this.hass.states[entityId]?.attributes || {};
-    const linkedSessionId = attrs.linked_brew_session_id;
-    const entityIds = this._getLinkedEntityIds(entityId, linkedSessionId);
+    const batchEntityId = this._resolveLinkedBatchEntity();
+    const entityIds = this._getLinkedEntityIds(entityId, batchEntityId);
     this._refreshEntityList(entityIds);
   }
 
   setConfig(config) {
     this._config = {
       density_unit: 'default',
+      show_controls: true,
       show_fermentation_steps: true,
+      show_graphs: true,
       ...(config || {}),
     };
 
@@ -656,12 +693,14 @@ class GrainfatherFermentationDeviceCard extends LitElement {
 
   set config(c) { this.setConfig(c); }
 
-  getCardSize() { return 2; }
+  getCardSize() { return this._config?.show_graphs === false ? 2 : 6; }
 
   static getStubConfig(hass) {
     return {
       density_unit: 'default',
+      show_controls: true,
       show_fermentation_steps: true,
+      show_graphs: true,
     };
   }
 
@@ -717,11 +756,23 @@ class GrainfatherFermentationDeviceCard extends LitElement {
           },
         },
         {
+          name: 'show_controls',
+          default: true,
+          selector: {
+            boolean: {},
+          },
+        },
+        {
           name: 'show_fermentation_steps',
           default: true,
           selector: {
             boolean: {},
           },
+        },
+        {
+          name: 'show_graphs',
+          default: true,
+          selector: { boolean: {} },
         },
       ],
       computeLabel: (s) => {
@@ -729,7 +780,9 @@ class GrainfatherFermentationDeviceCard extends LitElement {
         if (s.name === 'temperature_entity') return 'Optional: temperature sensor override';
         if (s.name === 'gravity_entity') return 'Optional: gravity sensor override';
         if (s.name === 'density_unit') return 'Density unit';
+        if (s.name === 'show_controls') return 'Show control panel';
         if (s.name === 'show_fermentation_steps') return 'Show fermentation steps';
+        if (s.name === 'show_graphs') return 'Show temperature and Plato graphs';
         return undefined;
       },
       computeHelper: (s) => {
@@ -737,7 +790,9 @@ class GrainfatherFermentationDeviceCard extends LitElement {
         if (s.name === 'temperature_entity') return 'If set, current temperature is read from this entity.';
         if (s.name === 'gravity_entity') return 'If set, gravity is read from this entity (generic sensor; no dedicated gravity device class in HA).';
         if (s.name === 'density_unit') return 'Display gravity values as Integration default, SG, Plato, or Brix.';
+        if (s.name === 'show_controls') return 'Show or hide the temperature, duration, and next-step controls.';
         if (s.name === 'show_fermentation_steps') return 'Show or hide the fermentation steps section.';
+        if (s.name === 'show_graphs') return 'Show hourly current-batch history graphs.';
         return undefined;
       },
       assertConfig: (config) => {
@@ -794,11 +849,11 @@ class GrainfatherFermentationDeviceCard extends LitElement {
       return null;
     }
 
-    // Try direct match with Grainfather numeric device_id exposed in attributes.
     const byNumericDeviceId = Object.keys(this.hass.states).find((id) => {
-      if (!id.endsWith('_temperature')) return false;
       const attrs = this.hass.states[id]?.attributes || {};
-      return String(attrs.device_id) === String(configuredDevice);
+      return id.endsWith('_temperature')
+        && attrs.grainfather_entity_type === 'fermentation_device'
+        && String(attrs.device_id) === String(configuredDevice);
     });
     if (byNumericDeviceId) {
       return byNumericDeviceId;
@@ -808,8 +863,10 @@ class GrainfatherFermentationDeviceCard extends LitElement {
     const entities = this.hass.entities;
     if (entities && typeof entities === 'object') {
       const byRegistryDevice = Object.entries(entities).find(([entityId, entry]) => {
-        if (!entityId.endsWith('_temperature')) return false;
-        return entry?.device_id === configuredDevice;
+        const attrs = this.hass.states[entityId]?.attributes || {};
+        return entityId.endsWith('_temperature')
+          && attrs.grainfather_entity_type === 'fermentation_device'
+          && entry?.device_id === configuredDevice;
       });
       if (byRegistryDevice) {
         return byRegistryDevice[0];
@@ -817,6 +874,84 @@ class GrainfatherFermentationDeviceCard extends LitElement {
     }
 
     return null;
+  }
+
+  _resolveLinkedBatchEntity() {
+    const temperatureId = this._resolveTemperatureEntityId();
+    const linkedSessionId = this.hass?.states[temperatureId]?.attributes?.linked_brew_session_id;
+    if (linkedSessionId == null) return null;
+    return Object.entries(this.hass.states).find(([, state]) => {
+      const attrs = state?.attributes || {};
+      return attrs.grainfather_entity_type === 'brew_session'
+        && String(attrs.brew_session_id) === String(linkedSessionId);
+    })?.[0] || null;
+  }
+
+  _ensureGraphStatistics(batchEntityId = this._resolveLinkedBatchEntity()) {
+    const state = this._config?.show_graphs === false ? null : this.hass?.states[batchEntityId];
+    const attrs = state?.attributes || {};
+    const start = Date.parse(attrs.fermentation_start_date) ? attrs.fermentation_start_date : '2001-01-07T00:00:00.000Z';
+    const hour = new Date().toISOString().slice(0, 13);
+    const key = state && String(attrs.status || '').toLowerCase() === 'fermenting'
+      && state.state !== 'unavailable' && state.state !== 'unknown'
+      && attrs.temperature_statistic_id && attrs.plato_statistic_id
+      ? `${attrs.temperature_statistic_id}|${attrs.plato_statistic_id}|${hour}` : null;
+    if (key === this._graphRequestKey) return;
+    this._graphRequestKey = key;
+    this._graphData = null;
+    this._graphError = false;
+    if (!key) return;
+    this._graphLoading = true;
+    this.hass.callWS({
+      type: 'recorder/statistics_during_period',
+      start_time: start,
+      end_time: new Date().toISOString(),
+      statistic_ids: [attrs.temperature_statistic_id, attrs.plato_statistic_id],
+      period: 'hour',
+      types: ['mean'],
+    }).then((data) => {
+      if (this._graphRequestKey === key) this._graphData = data;
+    }).catch(() => {
+      if (this._graphRequestKey === key) this._graphError = true;
+    }).finally(() => {
+      if (this._graphRequestKey === key) this._graphLoading = false;
+    });
+  }
+
+  _renderGraph(title, rows, color, unit) {
+    if (this._graphError) return html`<div class="graph-panel"><div class="graph-title">${title}</div><div class="graph-empty">History unavailable</div></div>`;
+    const values = (rows || []).filter((row) => Number.isFinite(Number(row.mean)));
+    if (!values.length) return html`<div class="graph-panel"><div class="graph-title">${title}</div><div class="graph-empty">${this._graphLoading ? 'Loading history…' : 'No history yet'}</div></div>`;
+    const numbers = values.map((row) => Number(row.mean));
+    const min = Math.min(...numbers), max = Math.max(...numbers), range = max - min || 1;
+    const points = values.map((row, index) => `${40 + index * 880 / Math.max(values.length - 1, 1)},${145 - (Number(row.mean) - min) * 110 / range}`).join(' ');
+    return html`<div class="graph-panel"><div class="graph-title">${title}</div>
+      <svg class="graph-svg" viewBox="0 0 960 180" role="img" aria-label=${title}>
+        <polyline fill="none" stroke=${color} stroke-width="4" points=${points}></polyline>
+        <text class="graph-label" x="40" y="175">${new Date(values[0].start).toLocaleDateString()}</text>
+        <text class="graph-label" x="780" y="175">${new Date(values.at(-1).start).toLocaleDateString()}</text>
+        <text class="graph-label" x="40" y="20">${max.toFixed(1)} ${unit}</text>
+        <text class="graph-label" x="820" y="20">${min.toFixed(1)} ${unit}</text>
+      </svg></div>`;
+  }
+
+  _renderGraphs(batchEntityId) {
+    const state = this.hass?.states[batchEntityId];
+    const attrs = state?.attributes;
+    if (
+      this._config?.show_graphs === false
+      || !attrs
+      || String(attrs.status || '').toLowerCase() !== 'fermenting'
+      || state.state === 'unavailable'
+      || state.state === 'unknown'
+      || !attrs.temperature_statistic_id
+      || !attrs.plato_statistic_id
+    ) return nothing;
+    const data = this._graphData || {};
+    return html`<div class="graph-section">
+      ${this._renderGraph('Temperature', data[attrs.temperature_statistic_id], '#d9c44a', '°C')}
+      ${this._renderGraph('Plato', data[attrs.plato_statistic_id], '#7ec8e3', '°P')}
+    </div>`;
   }
 
   // Resolve the best available gravity reading for this device.
@@ -1016,6 +1151,7 @@ class GrainfatherFermentationDeviceCard extends LitElement {
 
   render() {
     if (!this.hass) return nothing;
+    this._ensureGraphStatistics();
 
     const entityId = this._resolveTemperatureEntityId();
     if (!entityId) {
@@ -1061,49 +1197,28 @@ class GrainfatherFermentationDeviceCard extends LitElement {
       gravRaw = String(deviceHistoryLatest.specific_gravity);
     }
 
-    // Active session?
-    const linkedSessionId = attrs.linked_brew_session_id;
+    const linkedBatchEntityId = this._resolveLinkedBatchEntity();
+    const linkedBatchState = this.hass.states[linkedBatchEntityId];
+    const matchedBatchAttrs = linkedBatchState?.attributes || null;
+    const matchedBatchSensorId = linkedBatchEntityId;
+    const linkedSessionId = matchedBatchAttrs?.brew_session_id ?? attrs.linked_brew_session_id;
     const hasSession = linkedSessionId != null;
-
-    // Session data embedded in attributes
-    const steps              = attrs.fermentation_steps || [];   // from batch_number sensor (not always present here)
-    const fermentationStart  = attrs.fermentation_start_date;
-    const sessionName        = attrs.linked_brew_session_name || null;
-    let batchVariantName     = attrs.batch_variant_name || null;
-
-    // Try to derive steps from the linked brew-session batch_number sensor's attributes.
-    // Strategy: walk all states to find a batch_number sensor whose brew_session_id matches.
-    let derivedSteps = steps;
-    let derivedStart = fermentationStart;
+    const steps = matchedBatchAttrs?.fermentation_steps || [];
+    const fermentationStart = matchedBatchAttrs?.fermentation_start_date;
+    const sessionName = matchedBatchAttrs?.session_name || null;
+    let recipeName = matchedBatchAttrs?.recipe_name || null;
+    let batchVariantName = matchedBatchAttrs?.batch_variant_name || null;
+    const isFermenting = String(matchedBatchAttrs?.status || '').toLowerCase() === 'fermenting';
+    const derivedSteps = steps;
+    const derivedStart = fermentationStart;
     let targetTemperature = null;
-    let stepCount = 0;
+    const stepCount = derivedSteps.length;
 
-    let matchedBatchAttrs = null;
-    let matchedBatchSensorId = null;
-    let isFermenting = String(attrs?.status || '').toLowerCase() === 'fermenting';
-    if (hasSession && this.hass) {
-      const batchSensorId = Object.keys(this.hass.states).find((id) => {
-        if (!id.endsWith('_batch_number')) return false;
-        const s = this.hass.states[id];
-        return String(s?.attributes?.brew_session_id) === String(linkedSessionId);
-      });
-      if (batchSensorId) {
-        matchedBatchSensorId = batchSensorId;
-        const batchAttrs = this.hass.states[batchSensorId].attributes;
-        matchedBatchAttrs = batchAttrs;
-        isFermenting = String(batchAttrs?.status || '').toLowerCase() === 'fermenting';
-        derivedSteps = batchAttrs.fermentation_steps || derivedSteps;
-        derivedStart = batchAttrs.fermentation_start_date || derivedStart;
-        batchVariantName = batchAttrs.batch_variant_name || batchVariantName;
-
-        // Hard fallback for split/controller setups:
-        // if live device values are empty, use latest value directly from session history.
-        const sessionHistoryLatest = _latestFromHistory(batchAttrs.history_points);
-        if ((gravRaw == null || !_isValidNumber(gravRaw)) && sessionHistoryLatest.specific_gravity != null) {
-          gravRaw = String(sessionHistoryLatest.specific_gravity);
-        }
+    if (matchedBatchAttrs) {
+      const sessionHistoryLatest = _latestFromHistory(matchedBatchAttrs.history_points);
+      if ((gravRaw == null || !_isValidNumber(gravRaw)) && sessionHistoryLatest.specific_gravity != null) {
+        gravRaw = String(sessionHistoryLatest.specific_gravity);
       }
-      stepCount = derivedSteps.length;
     }
 
     const currentTemp = _fmtTemp(currentTempRaw);
@@ -1191,26 +1306,27 @@ class GrainfatherFermentationDeviceCard extends LitElement {
     const displayedTargetTemperature = optimisticView.targetTemperature;
     const displayedTotalMinutesRemaining = optimisticView.totalMinutesRemaining;
 
-    // Pretty device name: strip entry_id prefix if friendly_name not useful
+    // Include the linked recipe when its batch metadata is available.
     const displayName = _resolveDisplayName(attrs);
+    const titleName = recipeName ? `${displayName} · ${recipeName}` : displayName;
 
     return html`
       <ha-card>
         <div class="header">
-          <div class="device-name">${displayName}</div>
+          <div class="device-name">${titleName}</div>
           ${hasSession
             ? html`<div class="session-badge">${[sessionName, batchVariantName].filter(Boolean).join(' · ') || '#' + linkedSessionId}</div>`
             : nothing}
         </div>
 
         ${hasSession
-          ? this._renderActive(lang, currentTemp, displayedTargetTemperature, gravity, displayedStep, stepCount, unit, abv, displayedTotalMinutesRemaining, derivedSteps, isFermenting)
-          : this._renderPassive(lang, currentTemp, gravity)}
+          ? this._renderActive(lang, currentTemp, displayedTargetTemperature, gravity, displayedStep, stepCount, unit, abv, displayedTotalMinutesRemaining, derivedSteps, isFermenting, this._renderGraphs(matchedBatchSensorId))
+          : html`${this._renderPassive(lang, currentTemp, gravity)}${this._renderGraphs(matchedBatchSensorId)}`}
       </ha-card>
     `;
   }
 
-  _renderActive(lang, currentTemp, targetTemperature, gravity, currentStep, stepCount, unit, abv, totalMinutesRemaining, derivedSteps = [], isFermenting = false) {
+  _renderActive(lang, currentTemp, targetTemperature, gravity, currentStep, stepCount, unit, abv, totalMinutesRemaining, derivedSteps = [], isFermenting = false, graphs = nothing) {
     const stageLabel = currentStep
       ? `${currentStep.index + 1}/${currentStep.total}`
       : `—/${stepCount || '?'}`;
@@ -1220,6 +1336,7 @@ class GrainfatherFermentationDeviceCard extends LitElement {
     const targetDisplay = targetTemperature != null ? `${parseFloat(targetTemperature).toFixed(1)} °C` : '—';
     const totalTimeDisplay = totalMinutesRemaining != null ? _fmtTimeLeft(totalMinutesRemaining) : '—';
     const abvDisplay = _fmtABV(abv);
+    const showControls = this._config?.show_controls !== false;
     const showFermentationSteps = this._config?.show_fermentation_steps !== false;
 
     return html`
@@ -1273,10 +1390,12 @@ class GrainfatherFermentationDeviceCard extends LitElement {
         </div>
       </div>
 
+      ${graphs}
+
       ${showFermentationSteps && Array.isArray(derivedSteps) && derivedSteps.length > 0
         ? html`
             <div class="steps-section">
-              <div class="steps-title">Fermentation steps</div>
+              <div class="steps-title">${_t(lang, 'fermentation_steps')}</div>
               ${derivedSteps.map((step, index) => html`
                 <div class=${`step-row ${isFermenting && currentStep && index === currentStep.index ? 'current' : ''}`}>
                   <span class="step-name">${step.name || `Step ${index + 1}`}</span>
@@ -1287,7 +1406,7 @@ class GrainfatherFermentationDeviceCard extends LitElement {
           `
         : nothing}
 
-      ${currentStep ? html`
+      ${showControls && currentStep ? html`
         <div class="actions-bar">
           <div class="actions-group">
             <div class="actions-group-label">${_iconThermometer()}</div>
@@ -1303,7 +1422,7 @@ class GrainfatherFermentationDeviceCard extends LitElement {
           </div>
           <div class="actions-group">
             <div class="actions-group-label"></div>
-            <button class="action-btn wide" @click=${() => this._handleNextStep()}>➜ Next Step</button>
+            <button class="action-btn wide" @click=${() => this._handleNextStep()}>➜ ${_t(lang, 'next_step')}</button>
           </div>
         </div>
       ` : nothing}
@@ -1342,10 +1461,11 @@ class GrainfatherFermentationDeviceCard extends LitElement {
   _queueTemperatureAdjustment(delta) {
     const entityId = this._resolveTemperatureEntityId();
     if (!entityId || !this.hass) return;
-    const attrs = this.hass.states[entityId]?.attributes || {};
-    const linkedSessionId = attrs.linked_brew_session_id;
-    if (linkedSessionId === null) {
-      alert('No active brew session');
+    const batchEntityId = this._resolveLinkedBatchEntity();
+    const attrs = this.hass.states[batchEntityId]?.attributes || {};
+    const linkedSessionId = attrs.brew_session_id;
+    if (linkedSessionId == null) {
+      alert(_t(this._lang(), 'no_active_brew_session'));
       return;
     }
 
@@ -1366,10 +1486,11 @@ class GrainfatherFermentationDeviceCard extends LitElement {
   _queueDurationAdjustment(deltaMinutes) {
     const entityId = this._resolveTemperatureEntityId();
     if (!entityId || !this.hass) return;
-    const attrs = this.hass.states[entityId]?.attributes || {};
-    const linkedSessionId = attrs.linked_brew_session_id;
-    if (linkedSessionId === null) {
-      alert('No active brew session');
+    const batchEntityId = this._resolveLinkedBatchEntity();
+    const attrs = this.hass.states[batchEntityId]?.attributes || {};
+    const linkedSessionId = attrs.brew_session_id;
+    if (linkedSessionId == null) {
+      alert(_t(this._lang(), 'no_active_brew_session'));
       return;
     }
 
@@ -1472,10 +1593,11 @@ class GrainfatherFermentationDeviceCard extends LitElement {
   _callAdvanceStepService() {
     const entityId = this._resolveTemperatureEntityId();
     if (!entityId || !this.hass) return;
-    const attrs = this.hass.states[entityId]?.attributes || {};
-    const linkedSessionId = attrs.linked_brew_session_id;
-    if (linkedSessionId === null) {
-      alert('No active brew session');
+    const batchEntityId = this._resolveLinkedBatchEntity();
+    const attrs = this.hass.states[batchEntityId]?.attributes || {};
+    const linkedSessionId = attrs.brew_session_id;
+    if (linkedSessionId == null) {
+      alert(_t(this._lang(), 'no_active_brew_session'));
       return;
     }
     this._pushOptimisticUpdate(linkedSessionId, { advanceSteps: 1 });
@@ -1489,31 +1611,10 @@ class GrainfatherFermentationDeviceCard extends LitElement {
     });
   }
 
-  _getLinkedEntityIds(temperatureEntityId, linkedSessionId) {
+  _getLinkedEntityIds(temperatureEntityId, batchEntityId) {
     if (!this.hass) return [temperatureEntityId];
-
     const entities = new Set([temperatureEntityId]);
-    const prefix = temperatureEntityId.replace(/_temperature$/, '');
-
-    // Include sibling sensors derived from the same base id.
-    for (const suffix of ['_gravity', '_batch_number', '_abv', '_original_gravity']) {
-      const entityId = `${prefix}${suffix}`;
-      if (this.hass.states[entityId]) {
-        entities.add(entityId);
-      }
-    }
-
-    // Include any batch_number sensors matching the linked session id.
-    if (linkedSessionId != null) {
-      for (const id of Object.keys(this.hass.states)) {
-        if (!id.endsWith('_batch_number')) continue;
-        const state = this.hass.states[id];
-        if (String(state?.attributes?.brew_session_id) === String(linkedSessionId)) {
-          entities.add(id);
-        }
-      }
-    }
-
+    if (batchEntityId) entities.add(batchEntityId);
     return Array.from(entities);
   }
 

@@ -81,6 +81,7 @@
       "session_ferment_volume": { "name": "Gärvolumen" },
       "session_priming_sugar": { "name": "Speisezucker" },
       "session_recipe_info": { "name": "Rezept" },
+      "fermdevice_active_charge": { "name": "Aktive Charge" },
       "fermdevice_temperature": { "name": "Temperatur" },
       "fermdevice_target_temperature": { "name": "Zieltemperatur" },
       "fermdevice_gravity": { "name": "Dichte" },

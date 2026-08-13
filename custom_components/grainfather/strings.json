@@ -127,6 +127,9 @@
       "session_recipe_info": {
         "name": "Recipe"
       },
+      "fermdevice_active_charge": {
+        "name": "Active Charge"
+      },
       "fermdevice_temperature": {
         "name": "Temperature"
       },
