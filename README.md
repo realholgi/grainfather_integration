@@ -295,6 +295,9 @@ Home Assistant only uses local custom integration branding from `brand/` startin
 - [pyproject.toml](pyproject.toml) contains local tooling configuration
 - [docs/api.md](docs/api.md) documents the Grainfather cloud API used by the integration
 
+CI tests on Python 3.13. The `dev` extra pins `pytest-homeassistant-custom-component`
+to the last release supporting Python 3.13; it uses Home Assistant Core 2026.2.3.
+
 ## Lovelace Cards
 
 The repository includes several custom JavaScript cards in [custom_components/grainfather/www](custom_components/grainfather/www).

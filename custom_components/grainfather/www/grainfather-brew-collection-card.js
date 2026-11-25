@@ -1,4 +1,4 @@
-import { LitElement, css, html, nothing } from 'https://unpkg.com/lit@3.3.0/index.js?module';
+import { LitElement, css, html, nothing } from 'https://unpkg.com/lit@3.3.3/index.js?module';
 
 const DEFAULT_STATUSES = ['fermenting', 'conditioning', 'serving', 'brewing', 'planning', 'completed'];
 
