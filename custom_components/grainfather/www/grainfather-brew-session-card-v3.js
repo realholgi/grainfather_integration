@@ -364,12 +364,14 @@ class GrainfatherBrewSessionCardV3 extends LitElement {
     return entity.state;
   }
 
-  _metricValue(suffix, unit) {
+  _metricValue(suffix, unit, precision) {
     const raw = this._stateValue(suffix, '—');
     if (raw === '—') {
       return null;
     }
-    return unit ? `${raw} ${unit}` : String(raw);
+    const number = Number(raw);
+    const value = precision != null && Number.isFinite(number) ? number.toFixed(precision) : raw;
+    return unit ? `${value} ${unit}` : String(value);
   }
 
   _lang() {
@@ -429,8 +431,8 @@ class GrainfatherBrewSessionCardV3 extends LitElement {
     const showRecipeMetrics = this._config?.show_recipe_metrics !== false;
     const recipeMetricTiles = showRecipeMetrics
       ? [
-          [this._t('target_abv'), this._metricValue('target_abv', '%vol'), _iconPercent()],
-          [this._t('ibu'), this._metricValue('ibu', 'IBU'), _iconFlask()],
+          [this._t('target_abv'), this._metricValue('target_abv', '%vol', 1), _iconPercent()],
+          [this._t('ibu'), this._metricValue('ibu', 'IBU', 0), _iconFlask()],
           [this._t('color'), this._metricValue('color_srm', 'SRM'), _iconDrop()],
           [this._t('batch_size'), this._metricValue('batch_size', 'L'), _iconThermometer()],
         ].filter(([, value]) => value != null)

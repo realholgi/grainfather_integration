@@ -350,6 +350,8 @@ Display individual brew session details. Cards support `density_unit: default|sg
   also includes fermentation steps, current-step highlighting (only while
   `fermenting`), and step duration formatting (`1d 7h`).
 - Compact card (V3) provides a denser summary layout for large dashboards.
+- Both cards display target ABV to one decimal place and IBU as a whole number
+  without changing the underlying sensor values.
 
 ### Fermentation Device Card
 

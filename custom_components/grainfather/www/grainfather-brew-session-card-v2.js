@@ -439,12 +439,14 @@ class GrainfatherBrewSessionCard extends LitElement {
     return this._related('recipe_info') || this._related('recipe');
   }
 
-  _metricValue(suffix, unit) {
+  _metricValue(suffix, unit, precision) {
     const raw = this._stateValue(suffix, '—');
     if (raw === '—') {
       return null;
     }
-    return unit ? `${raw} ${unit}` : String(raw);
+    const number = Number(raw);
+    const value = precision != null && Number.isFinite(number) ? number.toFixed(precision) : raw;
+    return unit ? `${value} ${unit}` : String(value);
   }
 
   render() {
@@ -501,8 +503,8 @@ class GrainfatherBrewSessionCard extends LitElement {
 
     const preBoilGravity = _formatGravityFromSg(this._stateValue('pre_boil_gravity'), densityUnit, true);
     const recipeMetrics = [
-      ['Target ABV', this._metricValue('target_abv', '%vol')],
-      ['IBU', this._metricValue('ibu', 'IBU')],
+      ['Target ABV', this._metricValue('target_abv', '%vol', 1)],
+      ['IBU', this._metricValue('ibu', 'IBU', 0)],
       ['Color', this._metricValue('color_srm', 'SRM')],
       ['Calories', this._metricValue('calories', 'kcal')],
       ['Batch size', this._metricValue('batch_size', 'L')],
