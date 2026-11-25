@@ -345,7 +345,10 @@ group_by_status: true
 
 Display individual brew session details. Cards support `density_unit: default|sg|plato|brix` where `default` uses the integration-wide option.
 
-- Detailed card (V2) includes fermentation steps, current-step highlighting (only while `fermenting`), and step duration formatting (`1d 7h`).
+- Detailed card (V2) shows recipe ingredients from the recipe sensor on the same
+  Home Assistant brew-session device, even if the sensor has been renamed. It
+  also includes fermentation steps, current-step highlighting (only while
+  `fermenting`), and step duration formatting (`1d 7h`).
 - Compact card (V3) provides a denser summary layout for large dashboards.
 
 ### Fermentation Device Card

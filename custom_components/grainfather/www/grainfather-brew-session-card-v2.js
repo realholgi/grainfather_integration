@@ -391,7 +391,7 @@ class GrainfatherBrewSessionCard extends LitElement {
         'abv', 'original_gravity', 'final_gravity', 'style', 'batch_variant_name',
         'target_abv', 'ibu', 'color_srm', 'calories', 'batch_size', 'boil_time',
         'pre_boil_gravity', 'conditioning_temperature', 'conditioning_duration',
-        'ferment_volume', 'priming_sugar', 'recipe_info',
+        'ferment_volume', 'priming_sugar',
       ]) {
         const relatedId = `${base}_${suffix}`;
         if (this.hass.states[relatedId]) {
@@ -399,6 +399,8 @@ class GrainfatherBrewSessionCard extends LitElement {
         }
       }
     }
+    const recipe = this._recipeEntity();
+    if (recipe) ids.push(recipe.entity_id);
 
     this.hass.callService('homeassistant', 'update_entity', {
       entity_id: ids,
@@ -423,9 +425,18 @@ class GrainfatherBrewSessionCard extends LitElement {
     return entity.state;
   }
 
-  _relatedAttrs(suffix) {
-    const entity = this._related(suffix);
-    return entity ? entity.attributes : undefined;
+  _recipeEntity() {
+    const entities = this.hass.entities;
+    const deviceId = entities?.[this._config.entity]?.device_id;
+    if (deviceId) {
+      for (const [id, entry] of Object.entries(entities)) {
+        if (entry.device_id === deviceId) {
+          const state = this.hass.states[id];
+          if (state?.attributes.grainfather_entity_type === 'recipe') return state;
+        }
+      }
+    }
+    return this._related('recipe_info') || this._related('recipe');
   }
 
   _metricValue(suffix, unit) {
@@ -503,7 +514,7 @@ class GrainfatherBrewSessionCard extends LitElement {
       ['Priming sugar', this._metricValue('priming_sugar', 'g')],
     ].filter(([, value]) => value != null);
 
-    const recipeAttrs = this._relatedAttrs('recipe_info') || {};
+    const recipeAttrs = showRecipeIngredients ? this._recipeEntity()?.attributes || {} : {};
     const ingredientGroups = [
       ['Fermentables', recipeAttrs.fermentables],
       ['Hops', recipeAttrs.hops],
