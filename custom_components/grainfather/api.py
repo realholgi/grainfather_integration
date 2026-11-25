@@ -597,6 +597,10 @@ def parse_recipe_payload(payload: dict[str, Any] | None) -> GrainfatherRecipe | 
     if not payload:
         return None
 
+    unit_type_id = _to_int(payload.get("unit_type_id"))
+    fermentable_unit = (
+        {10: "kg", 20: "lb"}.get(unit_type_id) if unit_type_id is not None else None
+    )
     return GrainfatherRecipe(
         recipe_id=_to_int(_first_value(payload, "id", "recipe_id", "recipeId")),
         name=_first_value(payload, "name"),
@@ -610,7 +614,9 @@ def parse_recipe_payload(payload: dict[str, Any] | None) -> GrainfatherRecipe | 
             _first_value(payload, "og", "original_gravity", "originalGravity")
         ),
         fg=_to_float(_first_value(payload, "fg", "final_gravity", "finalGravity")),
-        fermentables=_parse_recipe_fermentables(payload.get("fermentables") or []),
+        fermentables=_parse_recipe_fermentables(
+            payload.get("fermentables") or [], fermentable_unit
+        ),
         hops=_parse_recipe_hops(payload.get("hops") or []),
         yeasts=_parse_recipe_yeasts(payload.get("yeasts") or []),
         mash_steps=_parse_recipe_mash_steps(
@@ -620,7 +626,9 @@ def parse_recipe_payload(payload: dict[str, Any] | None) -> GrainfatherRecipe | 
     )
 
 
-def _parse_recipe_fermentables(payload: Any) -> tuple[dict[str, Any], ...]:
+def _parse_recipe_fermentables(
+    payload: Any, unit: str | None
+) -> tuple[dict[str, Any], ...]:
     if not isinstance(payload, list):
         return tuple()
 
@@ -632,6 +640,7 @@ def _parse_recipe_fermentables(payload: Any) -> tuple[dict[str, Any], ...]:
             {
                 "name": _first_value(item, "name"),
                 "amount": _to_float(_first_value(item, "amount")),
+                "unit": unit,
                 "ppg": _to_float(_first_value(item, "ppg")),
                 "lovibond": _to_float(_first_value(item, "lovibond")),
                 "supplier": _first_value(item, "supplier"),

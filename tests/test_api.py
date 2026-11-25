@@ -174,6 +174,7 @@ def test_parse_recipe_payload_extracts_metrics_and_ingredients() -> None:
         "boil_time": "60",
         "og": "1.0484",
         "fg": "1.0122",
+        "unit_type_id": 10,
         "fermentables": [
             {
                 "name": "Pale Ale Malt",
@@ -221,6 +222,7 @@ def test_parse_recipe_payload_extracts_metrics_and_ingredients() -> None:
     assert recipe.og == 1.0484
     assert recipe.fg == 1.0122
     assert recipe.fermentables[0]["name"] == "Pale Ale Malt"
+    assert recipe.fermentables[0]["unit"] == "kg"
     assert recipe.fermentables[0]["ppg"] == 37
     assert recipe.hops[0]["name"] == "Citra"
     assert recipe.hops[0]["aa"] == 12.0

@@ -338,8 +338,10 @@ Both cards show one brew session. Set `density_unit: default|sg|plato|brix`.
 Choose `default` to use the integration-wide setting.
 
 - Detailed card (V2) reads ingredients from the recipe sensor on the same Home
-  Assistant brew-session device, even if you rename the sensor. It lists
-  fermentation steps and shows each duration in a format such as `1d 7h`.
+  Assistant brew-session device, even if you rename the sensor. Fermentable
+  amounts below `1 kg` or `1 lb` show `g` or `oz`, respectively, when positive.
+  Other amounts retain the recipe's `kg` or `lb` unit.
+  The card lists fermentation steps and shows durations such as `1d 7h`.
   It highlights the current step only while the session is `fermenting`.
 - Compact card (V3) provides a denser summary layout for large dashboards.
 - Both cards display target ABV to one decimal place and IBU as a whole number

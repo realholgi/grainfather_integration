@@ -518,7 +518,7 @@ class GrainfatherBrewSessionCard extends LitElement {
 
     const recipeAttrs = showRecipeIngredients ? this._recipeEntity()?.attributes || {} : {};
     const ingredientGroups = [
-      ['Fermentables', recipeAttrs.fermentables],
+      ['Fermentables', recipeAttrs.fermentables, true],
       ['Hops', recipeAttrs.hops],
       ['Yeasts', recipeAttrs.yeasts],
       ['Mash steps', recipeAttrs.mash_steps],
@@ -635,13 +635,13 @@ class GrainfatherBrewSessionCard extends LitElement {
             ? html`
                 <hr class="divider" />
                 <div class="section-title">Recipe ingredients</div>
-                ${ingredientGroups.map(([label, list]) => html`
+                ${ingredientGroups.map(([label, list, useSmallUnits]) => html`
                   <div class="ingredient-group">
                     <div class="section-title">${label}</div>
                     ${list.map((item) => html`
                       <div class="ingredient-item">
                         <span class="ingredient-name">${_ingredientName(item)}</span>
-                        <span class="ingredient-detail">${_ingredientDetail(item)}</span>
+                        <span class="ingredient-detail">${_ingredientDetail(item, useSmallUnits)}</span>
                       </div>
                     `)}
                   </div>
@@ -730,11 +730,18 @@ function _ingredientName(item) {
   return item.name || item.title || item.ingredient || item.type || '—';
 }
 
-function _ingredientDetail(item) {
+function _ingredientDetail(item, useSmallUnits) {
   if (item == null || typeof item !== 'object') return '';
   const parts = [];
-  if (item.amount != null && item.amount !== '') {
-    parts.push(item.unit ? `${item.amount} ${item.unit}` : String(item.amount));
+  const { amount, unit } = item;
+  if (amount != null && amount !== '') {
+    const metric = unit === 'kg';
+    if (useSmallUnits && (metric || unit === 'lb') && amount > 0 && amount < 1) {
+      const converted = Number((amount * (metric ? 1000 : 16)).toPrecision(15));
+      parts.push(`${converted} ${metric ? 'g' : 'oz'}`);
+    } else {
+      parts.push(unit ? `${amount} ${unit}` : String(amount));
+    }
   }
   if (item.temperature != null && item.temperature !== '') {
     parts.push(`${item.temperature} °C`);
