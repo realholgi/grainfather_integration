@@ -294,14 +294,17 @@ to the last release that supports Python 3.13. That release uses Home Assistant 
 
 The repository includes several custom JavaScript cards in [custom_components/grainfather/www](custom_components/grainfather/www).
 
+The integration registers the cards automatically; no dashboard resource entry
+is needed. After updating the integration, restart Home Assistant and reload
+the dashboard. Changed card files get new URLs, so you don't need to clear
+the browser cache.
+
 ### Brew Collection Card
 
 `grainfather-brew-collection-card.js` shows multiple brew sessions in a grid.
 Set a fixed number of cards per row or let the grid fit the available width.
 Choose a card layout, filter or group sessions by status, and hide duplicates
 with the options below.
-
-The integration registers the custom cards when it loads.
 
 **Example configuration:**
 

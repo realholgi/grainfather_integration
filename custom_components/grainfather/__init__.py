@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 
 import homeassistant.helpers.config_validation as cv
@@ -43,22 +44,15 @@ from .const import (
 from .coordinator import GrainfatherDataUpdateCoordinator
 from .history_importer import GrainfatherHistoryImporter
 
-_CARD_URL = "/grainfather/grainfather-brew-session-card-v2.js"
-_CARD_PATH = Path(__file__).parent / "www" / "grainfather-brew-session-card-v2.js"
-_CARD_V3_URL = "/grainfather/grainfather-brew-session-card-v3.js"
-_CARD_V3_PATH = Path(__file__).parent / "www" / "grainfather-brew-session-card-v3.js"
-_ON_TAP_CARD_URL = "/grainfather/grainfather-on-tap-card.js"
-_ON_TAP_CARD_PATH = Path(__file__).parent / "www" / "grainfather-on-tap-card.js"
-_COLLECTION_CARD_URL = "/grainfather/grainfather-brew-collection-card.js"
-_COLLECTION_CARD_PATH = (
-    Path(__file__).parent / "www" / "grainfather-brew-collection-card.js"
-)
-_FERM_DEVICE_CARD_URL = "/grainfather/grainfather-fermentation-device-card.js"
-_FERM_DEVICE_CARD_PATH = (
-    Path(__file__).parent / "www" / "grainfather-fermentation-device-card.js"
+_CARD_DIRECTORY = Path(__file__).parent / "www"
+_CARD_FILES = (
+    "grainfather-brew-session-card-v2.js",
+    "grainfather-brew-session-card-v3.js",
+    "grainfather-on-tap-card.js",
+    "grainfather-brew-collection-card.js",
+    "grainfather-fermentation-device-card.js",
 )
 _CARD_RESOURCES_KEY = f"{__name__}_card_registered"
-_CARD_FRONTEND_KEY = f"{__name__}_card_frontend_registered"
 
 
 PLATFORMS: list[Platform] = [
@@ -208,48 +202,34 @@ async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> Non
     await hass.config_entries.async_reload(entry.entry_id)
 
 
+def _card_module_urls(paths: list[StaticPathConfig]) -> list[str]:
+    """Version each module URL by its file contents."""
+    return [
+        f"{path.url_path}?v={sha256(Path(path.path).read_bytes()).hexdigest()[:16]}"
+        for path in paths
+    ]
+
+
 async def _async_register_card_resources(hass: HomeAssistant) -> None:
-    """Register the custom Lovelace card JS file as a static HTTP resource.
+    """Register the custom Lovelace card modules as static HTTP resources.
 
     Registration is guarded so it only runs once per HA instance regardless of
     how many Grainfather config entries are loaded.
     """
     if hass.data.get(_CARD_RESOURCES_KEY):
         return
-    await hass.http.async_register_static_paths(
-        [
-            StaticPathConfig(
-                url_path=_CARD_URL, path=str(_CARD_PATH), cache_headers=False
-            ),
-            StaticPathConfig(
-                url_path=_CARD_V3_URL,
-                path=str(_CARD_V3_PATH),
-                cache_headers=False,
-            ),
-            StaticPathConfig(
-                url_path=_ON_TAP_CARD_URL,
-                path=str(_ON_TAP_CARD_PATH),
-                cache_headers=False,
-            ),
-            StaticPathConfig(
-                url_path=_COLLECTION_CARD_URL,
-                path=str(_COLLECTION_CARD_PATH),
-                cache_headers=False,
-            ),
-            StaticPathConfig(
-                url_path=_FERM_DEVICE_CARD_URL,
-                path=str(_FERM_DEVICE_CARD_PATH),
-                cache_headers=False,
-            ),
-        ]
-    )
-    if not hass.data.get(_CARD_FRONTEND_KEY):
-        add_extra_js_url(hass, _CARD_URL)
-        add_extra_js_url(hass, _CARD_V3_URL)
-        add_extra_js_url(hass, _ON_TAP_CARD_URL)
-        add_extra_js_url(hass, _COLLECTION_CARD_URL)
-        add_extra_js_url(hass, _FERM_DEVICE_CARD_URL)
-        hass.data[_CARD_FRONTEND_KEY] = True
+    paths = [
+        StaticPathConfig(
+            url_path=f"/grainfather/{filename}",
+            path=str(_CARD_DIRECTORY / filename),
+            cache_headers=False,
+        )
+        for filename in _CARD_FILES
+    ]
+    module_urls = await hass.async_add_executor_job(_card_module_urls, paths)
+    await hass.http.async_register_static_paths(paths)
+    for url in module_urls:
+        add_extra_js_url(hass, url)
     hass.data[_CARD_RESOURCES_KEY] = True
 
 
