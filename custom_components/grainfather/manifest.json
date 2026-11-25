@@ -1,6 +1,7 @@
 {
   "domain": "grainfather",
   "name": "Grainfather",
+  "categories": ["appliances_cleaning.cooking"],
   "codeowners": ["@fidley"],
   "config_flow": true,
   "dependencies": ["frontend", "http", "recorder"],
