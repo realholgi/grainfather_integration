@@ -603,14 +603,16 @@ class GrainfatherBrewSessionCard extends LitElement {
             ? html`
                 <hr class="divider" />
                 <div class="section-title">Fermentation steps</div>
-                ${steps.map((step, index) => html`
-                  <div class=${`step-row ${isFermenting && index === currentStepIndex ? 'current' : ''}`}>
-                    <span class="step-name">${step.name || `Step ${index + 1}`}</span>
-                    <span class="step-meta">
-                      ${_stepMeta(step)}
-                    </span>
-                  </div>
-                `)}
+                <div>
+                  ${steps.map((step, index) => html`
+                    <div class=${`step-row ${isFermenting && index === currentStepIndex ? 'current' : ''}`}>
+                      <span class="step-name">${step.name || `Step ${index + 1}`}</span>
+                      <span class="step-meta">
+                        ${_stepMeta(step)}
+                      </span>
+                    </div>
+                  `)}
+                </div>
               `
             : nothing}
 
