@@ -894,8 +894,8 @@ class GrainfatherFermentationDeviceCard extends LitElement {
     const hour = new Date().toISOString().slice(0, 13);
     const key = state && String(attrs.status || '').toLowerCase() === 'fermenting'
       && state.state !== 'unavailable' && state.state !== 'unknown'
-      && attrs.temperature_statistic_id && attrs.plato_statistic_id
-      ? `${attrs.temperature_statistic_id}|${attrs.plato_statistic_id}|${hour}` : null;
+      && attrs.temperature_statistic_id && attrs.specific_gravity_statistic_id
+      ? `${attrs.temperature_statistic_id}|${attrs.specific_gravity_statistic_id}|${hour}` : null;
     if (key === this._graphRequestKey) return;
     this._graphRequestKey = key;
     this._graphData = null;
@@ -906,7 +906,7 @@ class GrainfatherFermentationDeviceCard extends LitElement {
       type: 'recorder/statistics_during_period',
       start_time: start,
       end_time: new Date().toISOString(),
-      statistic_ids: [attrs.temperature_statistic_id, attrs.plato_statistic_id],
+      statistic_ids: [attrs.temperature_statistic_id, attrs.specific_gravity_statistic_id],
       period: 'hour',
       types: ['mean'],
     }).then((data) => {
@@ -918,24 +918,24 @@ class GrainfatherFermentationDeviceCard extends LitElement {
     });
   }
 
-  _renderGraph(title, rows, color, unit) {
+  _renderGraph(title, rows, color, unit, precision = 1, convert = Number) {
     if (this._graphError) return html`<div class="graph-panel"><div class="graph-title">${title}</div><div class="graph-empty">History unavailable</div></div>`;
-    const values = (rows || []).filter((row) => Number.isFinite(Number(row.mean)));
+    const values = (rows || []).filter((row) => _isValidNumber(row.mean));
     if (!values.length) return html`<div class="graph-panel"><div class="graph-title">${title}</div><div class="graph-empty">${this._graphLoading ? 'Loading history…' : 'No history yet'}</div></div>`;
-    const numbers = values.map((row) => Number(row.mean));
+    const numbers = values.map((row) => convert(Number(row.mean)));
     const min = Math.min(...numbers), max = Math.max(...numbers), range = max - min || 1;
-    const points = values.map((row, index) => `${40 + index * 880 / Math.max(values.length - 1, 1)},${145 - (Number(row.mean) - min) * 110 / range}`).join(' ');
+    const points = numbers.map((value, index) => `${40 + index * 880 / Math.max(numbers.length - 1, 1)},${145 - (value - min) * 110 / range}`).join(' ');
     return html`<div class="graph-panel"><div class="graph-title">${title}</div>
       <svg class="graph-svg" viewBox="0 0 960 180" role="img" aria-label=${title}>
         <polyline fill="none" stroke=${color} stroke-width="4" points=${points}></polyline>
         <text class="graph-label" x="40" y="175">${new Date(values[0].start).toLocaleDateString()}</text>
         <text class="graph-label" x="780" y="175">${new Date(values.at(-1).start).toLocaleDateString()}</text>
-        <text class="graph-label" x="40" y="20">${max.toFixed(1)} ${unit}</text>
-        <text class="graph-label" x="820" y="20">${min.toFixed(1)} ${unit}</text>
+        <text class="graph-label" x="40" y="20">${max.toFixed(precision)} ${unit}</text>
+        <text class="graph-label" x="820" y="20">${min.toFixed(precision)} ${unit}</text>
       </svg></div>`;
   }
 
-  _renderGraphs(batchEntityId) {
+  _renderGraphs(batchEntityId, unit) {
     const state = this.hass?.states[batchEntityId];
     const attrs = state?.attributes;
     if (
@@ -945,12 +945,18 @@ class GrainfatherFermentationDeviceCard extends LitElement {
       || state.state === 'unavailable'
       || state.state === 'unknown'
       || !attrs.temperature_statistic_id
-      || !attrs.plato_statistic_id
+      || !attrs.specific_gravity_statistic_id
     ) return nothing;
     const data = this._graphData || {};
+    const gravity = data[attrs.specific_gravity_statistic_id];
+    const gravityGraph = unit === 'plato'
+      ? this._renderGraph('Gravity', gravity, '#7ec8e3', '°P', 1, _sgToPlato)
+      : unit === 'brix'
+        ? this._renderGraph('Gravity', gravity, '#7ec8e3', '°Bx', 1, _sgToBrix)
+        : this._renderGraph('Gravity', gravity, '#7ec8e3', 'SG', 4);
     return html`<div class="graph-section">
       ${this._renderGraph('Temperature', data[attrs.temperature_statistic_id], '#d9c44a', '°C')}
-      ${this._renderGraph('Plato', data[attrs.plato_statistic_id], '#7ec8e3', '°P')}
+      ${gravityGraph}
     </div>`;
   }
 
@@ -1320,8 +1326,8 @@ class GrainfatherFermentationDeviceCard extends LitElement {
         </div>
 
         ${hasSession
-          ? this._renderActive(lang, currentTemp, displayedTargetTemperature, gravity, displayedStep, stepCount, unit, abv, displayedTotalMinutesRemaining, derivedSteps, isFermenting, this._renderGraphs(matchedBatchSensorId))
-          : html`${this._renderPassive(lang, currentTemp, gravity)}${this._renderGraphs(matchedBatchSensorId)}`}
+          ? this._renderActive(lang, currentTemp, displayedTargetTemperature, gravity, displayedStep, stepCount, unit, abv, displayedTotalMinutesRemaining, derivedSteps, isFermenting, this._renderGraphs(matchedBatchSensorId, unit))
+          : html`${this._renderPassive(lang, currentTemp, gravity)}${this._renderGraphs(matchedBatchSensorId, unit)}`}
       </ha-card>
     `;
   }

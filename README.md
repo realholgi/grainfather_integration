@@ -360,8 +360,10 @@ Key capabilities:
 - Linked recipe name in the card title
 - Optional fermentation steps list (`show_fermentation_steps`)
 - Optional temperature, duration, and next-step control panel (`show_controls`)
-- Enabled-by-default batch-anchored temperature and Plato history graphs
-  (`show_graphs: false` keeps the compact live-telemetry card)
+- Enabled-by-default batch-anchored temperature and gravity history graphs
+  (`show_graphs: false` hides them). The gravity graph uses the same
+  `density_unit` as the live gravity display: the integration default unless
+  overridden on the card.
 - Current-step highlighting only when status is `fermenting`
 
 The graphs query the linked fermenting brew-session Batch Number entity's
