@@ -1,22 +1,19 @@
 # Grainfather Cloud API
 
-This document describes the Grainfather cloud API as consumed by this integration.
-It is derived from the client implementation in
-[`custom_components/grainfather/api.py`](../custom_components/grainfather/api.py)
-and from responses observed while exercising the live API. It is intended as a
-reference for maintainers and contributors.
+This reference covers how the integration uses the Grainfather cloud API. It draws
+on the [client code (`custom_components/grainfather/api.py`)](../custom_components/grainfather/api.py) and responses from
+the live API. It is for maintainers and contributors.
 
 > **Note**
-> This is an unofficial description of a private, undocumented API. Endpoints,
-> payloads, and behaviour can change without notice. Nothing here is endorsed by
-> Grainfather.
+> This is an unofficial reference for a private, undocumented API. Grainfather does not endorse
+> it. Endpoints, payloads, and behavior can change without notice.
 
 > **Verified**
-> The endpoints, fields, and enum values below were verified against the live API
-> (`https://community.grainfather.com/api`) on 2026-08-07 with a real account.
-> Fields marked _(not consumed)_ are returned by the API but not currently mapped
-> by the integration. Sections tagged _(undocumented, verified live)_ were
-> discovered by probing and are not used by the integration yet.
+> Verification used a real account on the live API
+> (`https://community.grainfather.com/api`) on 2026-08-07. It covered the endpoints,
+> fields, and enum values below. The API returns fields marked _(not consumed)_,
+> but the integration does not map them. Live probing found the sections marked
+> _(undocumented, verified live)_. The integration does not use them yet.
 
 ## Base URL
 
@@ -28,8 +25,8 @@ All paths below are relative to this base URL.
 
 ## Authentication
 
-The API uses email/password login to obtain a bearer token, which is then sent
-with every subsequent request.
+The client signs in with an email and password to get a bearer token. It sends
+the token with each subsequent request.
 
 ### `POST /auth/login`
 
@@ -44,11 +41,11 @@ Authenticate with Grainfather credentials.
 
 **Response (JSON):**
 
-The token is read from the first present of these fields:
-`api_token`, `accessToken`, or `token`. In practice the live API returns
-`api_token`.
+The client reads the token from the first field present: `api_token`,
+`accessToken`, or `token`. The live API returned `api_token`.
 
-Account information is parsed from the same response using the first present of:
+The client reads account information from the same response, using the first
+key present for each field:
 
 | Field        | Source keys                 |
 |--------------|-----------------------------|
@@ -76,12 +73,12 @@ Every non-login request includes:
 | `Cache-Control` | `no-cache, no-store, max-age=0`         |
 | `Pragma`        | `no-cache`                              |
 
-For `GET` requests a cache-busting query parameter `_ts` (current Unix timestamp)
-is appended to reduce stale responses from proxies/CDNs.
+The client adds `_ts` (the current Unix timestamp) to `GET` requests. This
+reduces stale responses from proxies and CDNs.
 
-**Token expiry / retry:** If a request returns `401`/`403`, the client discards the
-token, re-authenticates once, and retries the request a single time. A repeated
-`401`/`403` is surfaced as an authentication error.
+If a request returns `401`/`403`, the client discards the token, signs in once,
+and retries once. If the retry returns `401`/`403`, the client reports an
+authentication error.
 
 ## Brew sessions
 
@@ -98,48 +95,42 @@ List brew sessions, paginated.
 
 **Response (JSON):**
 
-The response is a standard Laravel-style paginator object:
+The response uses Laravel-style pagination:
 
-- `data` — array of brew session objects.
-- `current_page`, `per_page`, `from`, `to` — page metadata (`per_page` observed
-  as `10`).
-- `current_page_url`, `first_page_url`, `next_page_url`, `prev_page_url`, `path` —
-  pagination URLs. `next_page_url` / `prev_page_url` are `null` at the ends.
+- `data`: Array of brew session objects.
+- `current_page`, `per_page`, `from`, `to`: Page metadata. The observed `per_page` was `10`.
+- `current_page_url`, `first_page_url`, `next_page_url`, `prev_page_url`, `path`: Pagination URLs.
+  `next_page_url` is `null` on the last page. `prev_page_url` is `null` on the first.
 
-The client follows pagination using the first present of `next_page` / `nextPage`,
-or by parsing the `page` query parameter out of `next_page_url` / `nextPageUrl`.
-Pagination stops when there is no next page (or a page repeats).
+The client reads the next page from `next_page` or `nextPage` if present.
+Otherwise, it reads the `page` query parameter in `next_page_url` or
+`nextPageUrl`. It stops when there is no next page or a page repeats.
 
-> **Note** The live API returns `next_page_url` (a full URL with `?page=N`), not a
-> bare `next_page` field; the client's URL-parsing branch is the one exercised.
+> The live API returns `next_page_url` with `?page=N`, so the client reads the
+> URL. The live API did not return `next_page` as a separate field.
 
 ### `GET /recipes/{recipe_id}/brew-sessions/{brew_session_id}`
 
 Fetch full detail for a single brew session (including `fermentation_steps`).
 
-The integration fetches this detail for sessions in the `fermenting` state (status
-code `20`) to enrich the summary with fermentation steps.
+The integration fetches these details to get fermentation steps for sessions
+with status `fermenting` (code `20`).
 
 ### `PUT /recipes/{recipe_id}/brew-sessions/{brew_session_id}`
 
-Update a brew session. The client sends the full session payload (fetched via the
-detail endpoint) with selected fields modified. Used to:
+The client fetches the full session from the detail endpoint and sends it back
+with changes. It can change `status` or replace the `fermentation_steps` list.
 
-- change the session `status`;
-- replace the `fermentation_steps` list.
+Before sending a request, the client removes `user.api_token` if present.
+When replacing steps, it supplies defaults for `order` (the step index),
+`time_unit_id` (`30`), `is_ramp_step` (`false`), and `brew_session_id`.
 
-Before sending, the nested `user.api_token` field (if present) is stripped from the
-payload. When replacing fermentation steps, each step is normalized with defaults:
-`order` (its index), `time_unit_id` (`30`), `is_ramp_step` (`false`), and
-`brew_session_id`.
-
-> **Constraint** Fermentation steps may only be edited while the brew session status
-> is below `conditioning` (status code `< 30`).
+> **Constraint:** Edit fermentation steps only before `conditioning` (status code `< 30`).
 
 ### Brew session fields
 
-Fields parsed from a brew session payload (summary or detail). Many keys are read
-using both snake_case and camelCase variants.
+The client reads these fields from the session summary or detail response.
+It accepts both snake_case and camelCase for many keys.
 
 | Field                     | Source keys                                                        |
 |---------------------------|--------------------------------------------------------------------|
@@ -165,9 +156,8 @@ using both snake_case and camelCase variants.
 
 ### Raw brew session payload _(verified live)_
 
-Beyond the fields the integration maps above, a brew session object returned by
-`/2/brew-sessions` and the detail endpoint contains many more fields _(not
-consumed)_. Observed top-level keys:
+The list and detail endpoints return additional fields that the integration
+does not use. Observed top-level keys:
 
 `id`, `unit_type_id`, `notes`, `grain_weight`, `grain_temp`, `boil_time`,
 `boil_volume_est`, `ferment_volume_est`, `target_mash_temp`, `mash_thickness`,
@@ -253,12 +243,12 @@ List fermentation devices for the account. Returns a JSON array of device object
 | `last_temperature`             | `last_temperature`              |
 | `is_controller_linked`         | `is_controller_linked`          |
 
-**Raw device payload _(verified live)_** — additional fields returned but _(not
-consumed)_: `device_token`, `user_id`, `created_at`, `updated_at`,
-`particle_device_id`, `unique_device_token`, `serial_no`, `data_updated_at`,
-`firmware_ver`, `firmware_updated_at`, `source_fermentation_device_id`,
-`esp_chip_id`, and a fully embedded `brew_session` object (same shape as a brew
-session, minus the `user`).
+The live API returned these additional fields, which the integration does not
+use: `device_token`, `user_id`, `created_at`, `updated_at`, `particle_device_id`,
+`unique_device_token`, `serial_no`, `data_updated_at`, `firmware_ver`,
+`firmware_updated_at`, `source_fermentation_device_id`, and `esp_chip_id`.
+It also returned a nested `brew_session` object with the same fields as a brew
+session, except `user`.
 
 ### `fermentation_device_type_id` values _(verified live)_
 
@@ -283,19 +273,19 @@ The integration requests the last 90 days of `raw`, metric data.
 
 **Parameter behaviour _(verified live)_:**
 
-- `metric=true` returns Celsius; `metric=false` returns Fahrenheit (e.g. the same
-  reading was `~28.8` vs `83.8`). Gravity values are unaffected.
-- `format` was accepted for the values `raw`, `hourly`, `daily`, and `average`, but
-  all returned the same number of points in testing — no visible aggregation for
-  the ranges tried. `raw` is the safe default.
+- `metric=true` returns Celsius. `metric=false` returns Fahrenheit. The same
+  reading was `~28.8` and `83.8`, respectively. Gravity values did not change.
+- The API accepted `raw`, `hourly`, `daily`, and `average` for `format`. All
+  four returned the same number of points for the ranges tested, with no visible
+  aggregation. Use `raw` as the default.
 
-**Response (JSON):** either a JSON array of reading objects, or an object with a
-`data` array of reading objects. In practice a bare JSON array is returned.
+The response is either a JSON array of readings or an object with a `data`
+array of readings. The live API returned a bare array.
 
 ### History point fields
 
-Each reading is parsed into a history point. Readings with neither a temperature nor
-a specific gravity are skipped.
+The client converts each reading to a history point. It skips readings that
+contain neither temperature nor specific gravity.
 
 | Field              | Source keys                                                                                   |
 |--------------------|-----------------------------------------------------------------------------------------------|
@@ -312,9 +302,8 @@ a specific gravity are skipped.
 
 ## Additional endpoints (undocumented, verified live)
 
-These endpoints were discovered by probing the live API. All require the
-`Authorization: Bearer <token>` header. Except where noted, they are not used by
-the integration yet but are documented here for future work.
+Live probing found these endpoints. All require the `Authorization: Bearer <token>`
+header. The integration does not use them yet unless noted.
 
 ### `GET /users/me`
 
@@ -330,23 +319,22 @@ Returns the authenticated user as a single object. Observed fields: `id`,
 
 ### `GET /recipes`
 
-Returns a lightweight JSON **array** of the account's recipes. Each item only
-contains: `id`, `name`, `description`, `status` (e.g. `current`). Useful for
-building a recipe picker without the full payload.
+Returns the account's recipes as a JSON array. Each item contains only `id`,
+`name`, `description`, and `status` (for example, `current`). Use it to fill a
+recipe picker without fetching full recipes.
 
 ### `GET /2/recipes`
 
-Paginated full recipes, using the same Laravel paginator shape as
-`/2/brew-sessions` (`current_page`, `per_page` ~ `10`, `next_page_url`, `data`,
-etc.). Accepts a `page` query parameter. Each `data` item is a full recipe object
-(see `GET /recipes/{recipe_id}`).
+Returns full recipes in the same Laravel pagination format as `/2/brew-sessions`.
+The response includes `current_page`, `per_page` (about `10`), `next_page_url`,
+and `data`. Pass the `page` query parameter to choose a page. Each item in `data`
+is a full recipe object (see `GET /recipes/{recipe_id}`).
 
 ### `GET /recipes/{recipe_id}`
 
-Full detail for a single recipe. The integration calls this endpoint when a
-brew-session's embedded recipe lacks required metrics or ingredients; requests
-are cached per recipe ID for the duration of a snapshot refresh. Notable fields
-_(verified live)_:
+Returns the full recipe. The integration calls this endpoint if the embedded
+recipe lacks required metrics or ingredients. It caches the result by recipe ID
+for one snapshot refresh. Fields observed on the live API include:
 
 - Core: `id`, `name`, `description`, `notes`, `image_url`, `batch_size`,
   `boil_size`, `boil_time`, `efficiency`, `og`, `fg`, `srm`, `ibu`, `bggu`,
@@ -394,8 +382,8 @@ Returns the unit systems as a JSON array _(verified live)_:
 
 ### Endpoints that returned `404`
 
-While probing, the following guessed paths returned `404` and do **not** exist (at
-least not under these names): `/user`, `/me`, `/account`, `/profile`,
+These paths returned `404` in live testing:
+`/user`, `/me`, `/account`, `/profile`,
 `/brew-sessions`, `/2/brew-sessions/{id}`, `/equipment-profiles`,
 `/equipment/equipment-profiles`, `/water-profiles`, `/inventory`, `/styles`,
 `/notifications`, `/fermentation-devices` (without the `/equipment` prefix),
@@ -407,47 +395,42 @@ the recipe/brew-session payloads rather than exposed as standalone collections.
 
 ## Snapshot polling
 
-`GrainfatherApiClient.async_get_snapshot()` combines the endpoints above into a
-single snapshot the integration polls on a schedule:
+On each poll, `GrainfatherApiClient.async_get_snapshot()` builds one snapshot:
 
-1. List all brew sessions (paginated).
-2. For each `fermenting` session (status `20`), fetch full detail to include
+1. Read all pages of brew sessions.
+2. For each `fermenting` session (status `20`), fetch the full session to get its
    fermentation steps.
-3. For each brew session whose embedded recipe lacks required metrics or
-   ingredients, fetch full recipe detail once per recipe ID and merge it into the
-   session.
+3. If an embedded recipe lacks required metrics or ingredients, fetch the full
+   recipe once per recipe ID. Merge the details into the session.
 4. List fermentation devices.
-5. For each device, fetch the last 90 days of history and index the points both by
+5. Fetch the last 90 days of history for each device. Index the readings by
    device ID and by linked brew session (batch) ID.
 
 ### Adaptive interval
 
-The Grainfather cloud API is REST-only (no websocket, MQTT, or webhook is exposed to
-third parties), so the integration cannot receive true server-side push. Instead of a
-single fixed cadence, `GrainfatherDataUpdateCoordinator` chooses its next poll interval
-after every refresh based on the current snapshot:
+The Grainfather cloud API is REST-only. It offers no WebSocket, MQTT, or webhook
+channel to third parties. After each refresh, `GrainfatherDataUpdateCoordinator`
+uses the snapshot to choose the next poll interval:
 
-- **Active interval** (`active_scan_interval`, default 60 s) — used when the snapshot is
-  "active": any brew session has status `10` (brewing) or `20` (fermenting), or a
-  fermentation controller is `is_controller_linked` and its `last_heard` timestamp is
-  recent (within one hour).
-- **Idle interval** (`scan_interval`, default 300 s) — used otherwise, to keep load on
-  the Grainfather cloud and Home Assistant low.
-- **Post-action boost** — after any write (a service call or a number/select entity
-  write) the coordinator triggers an immediate refresh and stays on the active interval
-  for a short window (120 s) so the change and any device-side follow-up surface quickly.
+- **Active interval** (`active_scan_interval`, default 60 s): The coordinator uses
+  it when a brew session has status `10` (brewing) or `20` (fermenting). It also
+  uses it when a fermentation controller is `is_controller_linked` and its
+  `last_heard` timestamp is within one hour.
+- **Idle interval** (`scan_interval`, default 300 s): The coordinator uses it
+  otherwise to reduce load on the Grainfather cloud and Home Assistant.
+- **Post-action boost**: After a service call or a write to a number or select
+  entity, the coordinator refreshes immediately. It keeps the active interval
+  for 120 s to pick up the change and any follow-up from the device.
 
-Both intervals are clamped to `MIN_SCAN_INTERVAL` (60 s) / `MAX_SCAN_INTERVAL` (3600 s).
-The activity decision (`snapshot_is_active`) and interval choice (`compute_update_interval`)
-live in `custom_components/grainfather/polling.py` as pure, unit-tested functions. The
-integration remains classified `iot_class: cloud_polling` — adaptive polling is still
-polling.
+The coordinator limits both intervals to `MIN_SCAN_INTERVAL` (60 s) through
+`MAX_SCAN_INTERVAL` (3600 s). The pure functions `snapshot_is_active` and
+`compute_update_interval` make these choices in `custom_components/grainfather/polling.py`.
+Unit tests cover both functions. The integration remains `iot_class: cloud_polling`.
 
 ## Service actions
 
-The integration exposes these Home Assistant services (see
-[`custom_components/grainfather/services.yaml`](../custom_components/grainfather/services.yaml)),
-which map onto the write endpoints above:
+[`custom_components/grainfather/services.yaml`](../custom_components/grainfather/services.yaml)
+defines the Home Assistant service actions that call the write endpoints above:
 
 | Service                                       | API operation                                                   |
 |-----------------------------------------------|-----------------------------------------------------------------|

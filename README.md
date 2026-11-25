@@ -1,26 +1,25 @@
 # Home Assistant Grainfather Integration
 
-Custom Home Assistant integration for Grainfather cloud data, including brew sessions, fermentation devices, recipe images, and session controls.
+Connect Home Assistant to the Grainfather cloud to see brew sessions, fermentation devices, and recipe images, and control brew sessions.
 
 ## Support
 
-If this project helps your brewing workflow, you can support development here:
+If you find this integration useful, you can support its development:
 
 - [Buy Me a Beer](https://buymeacoffee.com/abapblog)
 
 ## Features
 
-- Config flow with Grainfather email and password
-- Brew session entities with batch, gravity, style, recipe image, and batch variant data
-- Recipe metric sensors per brew session: target ABV, IBU, color (SRM), calories, batch size, and boil time
-- Extra brew-session sensors: pre-boil gravity, conditioning temperature/duration, fermentation volume, and priming sugar
-- Recipe ingredients (fermentables, hops, yeasts, mash steps) exposed as attributes on a per-session recipe sensor
-- Brew session attributes including `condition_date`, `fermentation_start_date`, and `created_at`
-- Fermentation device temperature and gravity sensors, plus a target-temperature sensor for fermentation controllers
-- History data exposed on brew session attributes
-- Service actions for changing brew session status and fermentation steps
-- Button and select helpers for common brew session actions
-- Local integration branding assets for Home Assistant `2026.3+`
+- Sign in with your Grainfather email and password.
+- See batch details, gravity, style, recipe images, and batch variants.
+- Track target ABV, IBU, color (SRM), calories, batch size, and boil time for each session.
+- Track pre-boil gravity, conditioning temperature and duration, fermentation volume, and priming sugar.
+- Read fermentables, hops, yeasts, and mash steps from the session's recipe sensor.
+- Read history and dates such as `condition_date`, `fermentation_start_date`, and `created_at` from brew session attributes.
+- Monitor device temperature and gravity. Fermentation controllers also report their target temperature.
+- Change brew session status and fermentation steps with service actions.
+- Use button and select helpers for common brew session actions.
+- Use local integration branding on Home Assistant `2026.3+`.
 
 ## Installation
 
@@ -41,15 +40,15 @@ If this project helps your brewing workflow, you can support development here:
 
 ## Exposed Data
 
-The integration polls the Grainfather cloud API (with a state-aware adaptive
-interval, see [Adaptive Polling](#adaptive-polling)) and exposes:
+The integration polls the Grainfather cloud API at an interval that depends on
+session and device activity. See [Adaptive Polling](#adaptive-polling). It provides:
 
 - Brew sessions
 - Fermentation devices
 - Fermentation history linked to devices and sessions
 - Recipe images
 
-The implementation is based on the API shape described in [docs/api.md](docs/api.md), including:
+The integration uses these API endpoints, among others:
 
 - `/api/auth/login`
 - `/api/2/brew-sessions`
@@ -59,10 +58,10 @@ See [docs/api.md](docs/api.md) for the full Grainfather cloud API reference.
 
 ### Historic Fermentation Statistics
 
-On every integration load, Grainfather history is imported into Home Assistant
-Recorder as hourly external statistics. The import covers active and completed
-batches and is repaired on later reloads; it does not depend on the
-`include_completed_sessions` entity option.
+When the integration loads, it imports Grainfather history into Home Assistant
+Recorder as hourly external statistics. Each reload can repair the import.
+The import covers active and completed batches regardless of the
+`include_completed_sessions` option.
 
 Each batch with measurements can produce these statistic IDs:
 
@@ -72,26 +71,24 @@ Each batch with measurements can produce these statistic IDs:
 
 `<entry_id>` is Home Assistant's slugged config-entry ID and `<batch_id>` is
 the Grainfather brew-session ID. Use **Developer Tools → Statistics** to find
-the exact IDs. Temperature, specific gravity, and Plato are stored as hourly
-mean, minimum, and maximum values. Plato is calculated from SG using the same
-one-decimal conversion as the live sensors.
+the exact IDs. Recorder stores the hourly mean, minimum, and maximum for
+temperature, specific gravity, and Plato. The import uses the same one-decimal
+SG-to-Plato conversion as the live sensors.
 
-A brew-session **Batch Number** entity is the canonical batch anchor. Its
-`status` is `fermenting` and `is_current_batch` is `true` only for a current
-charge. Its `fermentation_devices` attribute lists the currently linked
-fermentation devices, while `fermentation_device_ids` preserves the API's
-reported membership. The anchor exposes immutable `temperature_statistic_id`,
-`specific_gravity_statistic_id`, and `plato_statistic_id` attributes for
-history graphs.
+The brew session's **Batch Number** entity identifies the batch. Only an active
+fermentation has `status` set to `fermenting` and `is_current_batch` set to `true`.
+`fermentation_devices` lists the devices currently linked to the batch.
+`fermentation_device_ids` preserves the device IDs reported by the API.
+History graphs use three fixed attributes on this entity: `temperature_statistic_id`,
+`specific_gravity_statistic_id`, and `plato_statistic_id`.
 
-Fermentation-device sensors represent live hardware only: temperature, gravity,
-Plato, and controller target temperature where available. Each device also has
-an **Active Charge** reference sensor while it is linked to a fermenting
-session. Its state is the session or recipe name; `brew_session_unique_id`
-always identifies the canonical Batch Number anchor and
-`brew_session_entity_id` is provided when its Home Assistant entity ID is
-available. It does not copy batch data. Multiple sessions may ferment
-concurrently; each has its own canonical batch anchor.
+Fermentation-device sensors show live hardware readings: temperature, gravity,
+Plato, and controller target temperature when available. A device linked to a
+fermenting session also has an **Active Charge** sensor. Its state is the session
+or recipe name. `brew_session_unique_id` identifies the Batch Number entity.
+`brew_session_entity_id` gives its Home Assistant entity ID when available.
+The sensor does not copy batch data. Several sessions can ferment at the same
+time, each with its own Batch Number entity.
 
 Use a `statistics-graph` card to chart a completed fermentation:
 
@@ -110,30 +107,26 @@ developer tool.
 
 ### Adaptive Polling
 
-The Grainfather cloud API is REST-only, so the integration polls it on a schedule.
-Instead of a single fixed cadence, it uses **state-aware adaptive polling**:
+The Grainfather cloud API is REST-only. The integration varies how often it polls:
 
-- While a brew session is **brewing** or **fermenting** (or a fermentation controller
-  is linked and was heard from recently), it polls at the faster **active interval**
-  (default 60 s).
-- Otherwise it polls at the slower **idle interval** (the `scan_interval` option,
-  default 300 s), which keeps load on the Grainfather cloud and Home Assistant low.
-- Right after you make a change (a service call or a number/select write), it performs
-  an **immediate refresh** and briefly stays on the active interval so the change — and
-  any device-side follow-up — shows up quickly.
+- It uses the **active interval** (default 60 s) while a session is **brewing**
+  or **fermenting**, or when a linked fermentation controller has reported recently.
+- Otherwise, it uses the **idle interval** (`scan_interval`, default 300 s) to
+  reduce load on the Grainfather cloud and Home Assistant.
+- After a service call or a write to a number or select entity, it refreshes
+  immediately. It briefly keeps the active interval to pick up changes on the device.
 
-Both intervals are clamped to 60–3600 s and are configurable under
-**Settings > Devices & Services > Grainfather > Configure** (the *Idle update interval*
-and *Active update interval* options). Entities update within Home Assistant as soon as a
-poll completes.
+Both intervals have a range of 60 to 3600 s. Set them under
+**Settings > Devices & Services > Grainfather > Configure** using *Idle update interval*
+and *Active update interval*. Home Assistant updates the entities when each poll completes.
 
 ### Brew Session & Recipe Sensors
 
-Each brew session becomes a Home Assistant device with the following sensors. Entity IDs
-follow the pattern `sensor.grainfather_<session>_<key>`, where `<session>` is the slug Home
-Assistant generates from the device name (for example `sensor.grainfather_batch_01_ibu`).
-Look up the exact slugs under **Settings > Devices & Services > Grainfather** or in
-**Developer Tools > States** (filter for `grainfather`).
+Home Assistant represents each brew session as a device. Its sensor IDs follow
+`sensor.grainfather_<session>_<key>`, for example `sensor.grainfather_batch_01_ibu`.
+Home Assistant generates `<session>` from the device name. Find the exact IDs
+under **Settings > Devices & Services > Grainfather** or search for `grainfather`
+under **Developer Tools > States**.
 
 Recipe metric sensors:
 
@@ -156,29 +149,28 @@ Extra brew-session sensors:
 | `ferment_volume` | Fermentation volume | litres |
 | `priming_sugar` | Priming sugar amount, with `priming_sugar_type` / `priming_sugar_amount` attributes | (amount) |
 
-A sensor reports `unknown` when the underlying field is not present for that session or
-recipe yet (for example `target_abv` needs recipe data, and the `conditioning_*` sensors
-need those raw fields).
+A sensor reports `unknown` if the session or recipe does not provide the field.
+For example, `target_abv` needs recipe data and the `conditioning_*` sensors need
+the corresponding fields from the session.
 
 ### Recipe Ingredients (attributes)
 
-Each brew session also exposes a `recipe_info` sensor
-(`sensor.grainfather_<session>_recipe_info`). Its state is the recipe name, and the recipe
-details are exposed as **attributes**:
+Each brew session has a `recipe_info` sensor (`sensor.grainfather_<session>_recipe_info`).
+Its state is the recipe name. Its attributes include:
 
 - `abv`, `ibu`, `srm`, `og`, `fg`
-- `fermentables`, `hops`, `yeasts`, `mash_steps` — ingredient lists (each capped at 30 items)
+- `fermentables`, `hops`, `yeasts`, `mash_steps` (ingredient lists, up to 30 items each)
 
-Because these are attributes, a normal card only shows the count/name. Use a Markdown card
-with a Jinja template to render them (see the example below). The exact keys inside each
-ingredient entry come straight from the Grainfather payload, so inspect one in
-**Developer Tools > States** to see fields like `name` and `amount`.
+A standard card shows only the count or name. To show the lists, use a Markdown
+card with a Jinja template, as shown below. Check the sensor in
+**Developer Tools > States** for the fields Grainfather supplies, such as `name`
+and `amount`.
 
 ### Fermentation Controller Target Temperature
 
-For fermentation controllers (devices where `fermentation_device_type_id == 30`), an extra
-`sensor.grainfather_<device>_target_temperature` (°C) is created. It pairs with the existing
-temperature and gravity sensors on the controller.
+For a fermentation controller (`fermentation_device_type_id == 30`), the
+integration adds `sensor.grainfather_<device>_target_temperature` (°C) alongside
+the controller's temperature and gravity sensors.
 
 ### Using the New Sensors
 
@@ -211,7 +203,7 @@ min: 0
 max: 12
 ```
 
-Render recipe ingredients with a **Markdown** card (attributes are read via `state_attr`):
+In a **Markdown** card, use `state_attr` to read the recipe ingredients:
 
 ```yaml
 type: markdown
@@ -283,8 +275,8 @@ The integration registers these service actions:
 
 This repository includes local branding assets in [custom_components/grainfather/brand](custom_components/grainfather/brand).
 
-- `icon.png` is used for compact integration surfaces
-- `logo.png` is used where Home Assistant shows a wider brand image
+- Home Assistant uses `icon.png` where space is limited.
+- It uses `logo.png` where it can show a wider image.
 
 Home Assistant only uses local custom integration branding from `brand/` starting with version `2026.3`.
 
@@ -296,7 +288,7 @@ Home Assistant only uses local custom integration branding from `brand/` startin
 - [docs/api.md](docs/api.md) documents the Grainfather cloud API used by the integration
 
 CI tests on Python 3.13. The `dev` extra pins `pytest-homeassistant-custom-component`
-to the last release supporting Python 3.13; it uses Home Assistant Core 2026.2.3.
+to the last release that supports Python 3.13. That release uses Home Assistant Core 2026.2.3.
 
 ## Lovelace Cards
 
@@ -304,19 +296,12 @@ The repository includes several custom JavaScript cards in [custom_components/gr
 
 ### Brew Collection Card
 
-`grainfather-brew-collection-card.js` displays multiple brew sessions in a responsive grid with advanced filtering and deduplication.
+`grainfather-brew-collection-card.js` shows multiple brew sessions in a grid.
+Set a fixed number of cards per row or let the grid fit the available width.
+Choose a card layout, filter or group sessions by status, and hide duplicates
+with the options below.
 
-**Features:**
-
-- Display multiple brew sessions at once (V2 Detailed or V3 Compact layout)
-- Filter by status (fermenting, conditioning, serving, brewing, planning, completed)
-- Optional deduplication: show only one card per unique batch_number + session name pair
-- Optional grouping by status in separate sections
-- Responsive grid with configurable layout:
-  - fixed cards per row (`cards_per_row`)
-  - auto-fit mode with minimum card width (`card_min_width`)
-
-Custom-card resources are registered automatically when the integration loads.
+The integration registers the custom cards when it loads.
 
 **Example configuration:**
 
@@ -336,59 +321,55 @@ group_by_status: true
 **Configuration Options:**
 
 - `title` (string): Display name for the collection
-- `entities` (list): Grainfather batch_number sensors to display
-- `card_type` (string): Card layout — `brew-session-detailed` (V2) or `brew-session-compact` (V3)
-- `statuses` (list): Filter by these statuses (default: all available)
-- `deduplicate` (boolean): Show only one card per batch_number + name pair
+- `entities` (list): Grainfather `batch_number` sensors to show
+- `card_type` (string): Choose `brew-session-detailed` (V2) or `brew-session-compact` (V3).
+- `statuses` (list): Statuses to show (default: all available). Options: `fermenting`, `conditioning`, `serving`, `brewing`, `planning`, `completed`.
+- `deduplicate` (boolean): Show one card per `batch_number` and session name pair
 - `group_by_status` (boolean): Group sessions by status in separate sections
 - `cards_per_row` (number): Fixed number of cards per row (`0` = auto-fit mode)
 - `card_min_width` (number): Minimum card width in px used by auto-fit mode
 
 ### Brew Session Cards (Detailed & Compact)
 
-Display individual brew session details. Cards support `density_unit: default|sg|plato|brix` where `default` uses the integration-wide option.
+Both cards show one brew session. Set `density_unit: default|sg|plato|brix`.
+Choose `default` to use the integration-wide setting.
 
-- Detailed card (V2) shows recipe ingredients from the recipe sensor on the same
-  Home Assistant brew-session device, even if the sensor has been renamed. It
-  also includes fermentation steps, current-step highlighting (only while
-  `fermenting`), and step duration formatting (`1d 7h`).
+- Detailed card (V2) reads ingredients from the recipe sensor on the same Home
+  Assistant brew-session device, even if you rename the sensor. It lists
+  fermentation steps and shows each duration in a format such as `1d 7h`.
+  It highlights the current step only while the session is `fermenting`.
 - Compact card (V3) provides a denser summary layout for large dashboards.
 - Both cards display target ABV to one decimal place and IBU as a whole number
   without changing the underlying sensor values.
 
 ### Fermentation Device Card
 
-`grainfather-fermentation-device-card.js` shows live fermentation-device telemetry and active session controls.
+`grainfather-fermentation-device-card.js` shows live device readings and controls
+for the active brew session.
 
-Key capabilities:
-
-- Immediate UI response (optimistic updates) for temperature/duration step changes
-- Debounced batching of rapid adjustments
-- Absolute-value backend updates for safer multi-dashboard use
+- The card shows changes to step temperature and duration immediately.
+- It groups rapid adjustments before sending them.
+- It sends absolute values to reduce conflicts between dashboards.
 - Linked recipe name in the card title
 - Optional fermentation steps list (`show_fermentation_steps`)
 - Optional temperature, duration, and next-step control panel (`show_controls`)
-- Enabled-by-default batch-anchored temperature and gravity history graphs
-  (`show_graphs: false` hides them). The gravity graph uses the same
-  `density_unit` as the live gravity display: the integration default unless
-  overridden on the card.
+- Temperature and gravity history graphs are on by default. Set `show_graphs: false`
+  to hide them. The gravity graph uses the same `density_unit` as the live reading.
+  You can override the integration default on the card.
 - Current-step highlighting only when status is `fermenting`
 
-The graphs query the linked fermenting brew-session Batch Number entity's
-immutable Recorder statistic IDs, not the stable live sensor histories. They
-clear when the device is unlinked or the linked session stops fermenting.
+The graphs use the fixed Recorder statistic IDs from the linked brew session's
+Batch Number entity, rather than live sensor history. The graphs clear when you
+unlink the device or the session stops fermenting.
 
 ### On Tap Blackboard Card
 
-`grainfather-on-tap-card.js` renders a pub-style blackboard list of beers currently in status `serving`.
+`grainfather-on-tap-card.js` shows beers with `status = serving` on a pub-style
+blackboard. If a batch has more than one variant, the card shows only the first.
 
-- Shows only: batch number, style, ABV, original gravity
-- Filters sessions to `status = serving`
-- If a batch appears in multiple variants, only the first variant is shown
-- Supports `density_unit: default|sg|plato|brix` on all included brew session cards and the On Tap card
-- Mobile-friendly layout: ABV and gravity move to a second line to keep full beer names visible
-
-Custom-card resources are registered automatically when the integration loads.
+- Shows only the batch number, style, ABV, and original gravity.
+- Supports `density_unit: default|sg|plato|brix`, as do both Brew Session cards.
+- On narrow screens, ABV and gravity move to a second line so beer names stay visible.
 
 ```yaml
 type: custom:grainfather-on-tap-card
@@ -397,8 +378,6 @@ density_unit: sg
 ```
 
 ## Dashboard UI Overview
-
-Recent dashboard views include:
 
 ### Card Picker
 
@@ -431,18 +410,14 @@ fermentation steps, and controls.
 
 ![Detailed brew session card showing live fermentation data](docs/images/brew_sessions_collection_with_detailed_card.png)
 
-These examples reflect the current card behavior and layout options documented above.
-
 ## Current Limitations
 
-- The Grainfather cloud API is not officially documented, so some payload assumptions are based on observed responses.
-- The Grainfather cloud API is REST-only and exposes no push channel (no websocket, MQTT, or webhook) to third parties, so the integration is `cloud_polling`. It compensates with [state-aware adaptive polling](#adaptive-polling) rather than true server-side push.
+- Grainfather does not publish API documentation. Some assumptions about the
+  payload come from observed responses.
+- The REST API offers no WebSocket, MQTT, or webhook channel to third parties.
+  The integration uses [adaptive polling](#adaptive-polling) (`cloud_polling`).
 
 ## Roadmap
 
-1. Add fixture-based tests from captured real API responses.
-2. Expand entity coverage once more Grainfather API fields and workflows are confirmed.
-
-## Support The Project
-
-- [Buy Me a Beer](https://buymeacoffee.com/abapblog)
+1. Add tests that use captured API responses as fixtures.
+2. Add entities as more Grainfather API fields and workflows are confirmed.
