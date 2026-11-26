@@ -404,6 +404,7 @@ This requirement applies to the example, not the integration itself.
    mode, and paste the example into the **Raw configuration editor**. Before
    saving, replace `sensor.grainfather_batch_01_recipe_info` with the recipe
    sensor you want the **Recipe Ingredients** card to show.
+   The card rounds recipe figures and shows units without changing sensor values.
 
 The **Brew Sessions** view discovers batches automatically, excludes completed
 ones, and sorts the rest by batch number, newest first. To migrate an existing

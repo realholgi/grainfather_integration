@@ -117,40 +117,52 @@ views:
       # sensor.grainfather_<session>_recipe_info sensors.
       - type: markdown
         title: Recipe Ingredients
-        content: >
+        content: |-
           {% set s = 'sensor.grainfather_batch_01_recipe_info' %}
+          {% set fermentables = state_attr(s, 'fermentables') or [] %}
+          {% set grain_unit = fermentables | map(attribute='unit', default='') | reject('none') | reject('equalto', '') | first | default('') %}
+          {% set hop_unit = {'kg': 'g', 'lb': 'oz'}.get(grain_unit, '') %}
+          {% macro number(value, decimals) -%}
+            {{- ('%.*f' | format(decimals, value | float) | replace('.', ',')) if is_number(value) else '—' -}}
+          {%- endmacro %}
+          {% macro metric(key, decimals, unit) -%}
+            {%- set value = state_attr(s, key) -%}
+            {{- (number(value, decimals) ~ ' ' ~ unit) if is_number(value) else '—' -}}
+          {%- endmacro %}
+          {% macro weight(item, decimals, fallback='', small=false) -%}
+            {%- if item.amount is defined and is_number(item.amount) -%}
+              {%- set value = item.amount | float -%}
+              {%- set unit = item.unit | default(fallback, true) -%}
+              {%- if small and 0 < value < 1 and unit == 'kg' -%}
+                {%- set value, unit, decimals = value * 1000, 'g', 0 -%}
+              {%- elif small and 0 < value < 1 and unit == 'lb' -%}
+                {%- set value, unit, decimals = value * 16, 'oz', 1 -%}
+              {%- endif -%}
+              {{- ' — ' ~ number(value, decimals) ~ (' ' ~ unit if unit else '') -}}
+            {%- endif -%}
+          {%- endmacro %}
 
           ## {{ states(s) }}
 
-          **ABV** {{ state_attr(s, 'abv') }} % &nbsp;·&nbsp;
-          **IBU** {{ state_attr(s, 'ibu') }} &nbsp;·&nbsp;
-          **SRM** {{ state_attr(s, 'srm') }}
-
+          **ABV** {{ metric('abv', 1, '% vol') }} · **IBU** {{ metric('ibu', 0, 'IBU') }} · **SRM** {{ metric('srm', 1, 'SRM') }}
 
           ### Fermentables
-
-          {% for f in state_attr(s, 'fermentables') or [] %}
-          - {{ f.name }}{% if f.amount is defined %} — {{ f.amount }}{% endif %}
+          {% for f in fermentables -%}
+          - {{ f.name }}{{ weight(f, 2, small=true) }}
           {% endfor %}
-
 
           ### Hops
-
-          {% for h in state_attr(s, 'hops') or [] %}
-          - {{ h.name }}{% if h.amount is defined %} — {{ h.amount }}{% endif %}
+          {% for h in state_attr(s, 'hops') or [] -%}
+          - {{ h.name }}{{ weight(h, 1, hop_unit) }}
           {% endfor %}
 
-
           ### Yeasts
-
-          {% for y in state_attr(s, 'yeasts') or [] %}
+          {% for y in state_attr(s, 'yeasts') or [] -%}
           - {{ y.name }}
           {% endfor %}
 
-
           ### Mash steps
-
-          {% for m in state_attr(s, 'mash_steps') or [] %}
-          - {{ m.name }}{% if m.temperature is defined %} — {{ m.temperature }} °C{% endif %}{% if m.time is defined %} / {{ m.time }} min{% endif %}
+          {% for m in state_attr(s, 'mash_steps') or [] -%}
+          - {{ m.name }}{% if m.temperature is defined and is_number(m.temperature) %} — {{ number(m.temperature, 1) }} °C{% endif %}{% if m.time is defined and is_number(m.time) %} / {{ number(m.time, 0) }} min{% endif %}
           {% endfor %}
 
