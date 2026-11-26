@@ -385,6 +385,31 @@ max_items: 12
 density_unit: sg
 ```
 
+## Example Dashboard
+
+[dashboard.yaml](dashboard.yaml) requires **Home Assistant 2026.11 or newer**
+for its native [automatic section](https://www.home-assistant.io/dashboards/sections/#adding-an-automatic-section).
+This requirement applies to the example, not the integration itself.
+
+1. Set up the Grainfather integration and install
+   [Auto Entities](https://github.com/thomasloven/lovelace-auto-entities) from
+   **Settings > Marketplace** for the dynamic history and metrics cards. The
+   example no longer requires Auto Sections Strategy or Device Card.
+2. Create a Home Assistant label named **Grainfather Fermentation** and
+   [apply it](https://www.home-assistant.io/docs/organizing/labels/#applying-labels)
+   to the Grainfather fermentation hardware, not the brew-session devices.
+   If you use a different label ID, set `target.label_id` in the **Active
+   Fermentations** view to match. Label new hardware to include it in this view.
+3. Create a dashboard under **Settings > Dashboards**. Open it, enter edit
+   mode, and paste the example into the **Raw configuration editor**. Before
+   saving, replace `sensor.grainfather_batch_01_recipe_info` with the recipe
+   sensor you want the **Recipe Ingredients** card to show.
+
+The **Brew Sessions** view discovers batches automatically, excludes completed
+ones, and sorts the rest by batch number, newest first. To migrate an existing
+dashboard, back up its raw configuration and replace the old Brew Sessions and
+Active Fermentations views with the corresponding views from the example.
+
 ## Dashboard UI Overview
 
 ### Card Picker
