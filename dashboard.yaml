@@ -1,96 +1,58 @@
 # Grainfather Dashboard
-# Requires HACS cards:
-#   - auto-sections-strategy  (https://github.com/nielsrowinbik/auto-sections-strategy)
-#   - device-card
-#   - auto-entities             (used only for history-graph in Active Fermentations)
-#
-# Helpers (auto-created by integration):
-#   - input_number.grainfather_max_sessions (informational)
-#   - input_boolean.grainfather_show_STATUS for each status
-#   These can be used in custom automations or card filtering.
+# Requires Home Assistant 2026.11 or newer, the Grainfather integration,
+# and Auto Entities for the dynamic history and metric cards.
+# See the README's Example Dashboard section for setup.
 
 title: Brewing
 
 views:
   # ── Brew Sessions ────────────────────────────────────────────────────────────
-  # Uses auto-sections-strategy to group sessions by device.id.
-  # Sessions are sorted by batch_number (descending = newest first).
-  # For reactive status filtering, use custom automations with the helpers.
   - title: Brew Sessions
     icon: mdi:beer
-    strategy:
-      type: custom:auto-sections
-      options:
-        # One section per Brew-Session device
-        group_by: device.id
-        group_name: device.id|name
-        max_columns: 2
-        filter:
-          include:
-            # batch_number sensor carries grainfather_entity_type: brew_session
-            # → exactly ONE entity per brew-session device → ONE card per section
-            - attribute:
-                grainfather_entity_type: brew_session
-          exclude:
-            - attribute: 
-                  status: completed
-        sort:
-          method: alphabetical
-          direction: descending
-        card_options:
-          _:
-            # auto-sections-strategy passes `entity`; device-card derives device_id
-            # from the entity registry automatically.
-            type: custom:device-card
-            section_order:
-              - sensors
-              - controls
-              - configurations
-              - diagnostics
-            preview_count: 35
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:grainfather-brew-collection-card
+            card_type: brew-session-detailed
+            statuses: [planning, brewing, fermenting, conditioning, serving]
+            sort_by: batch_number
+            sort_direction: desc
+            card_min_width: 360
+            grid_options:
+              columns: full
+              rows: auto
 
   # ── Active Fermentations ─────────────────────────────────────────────────────
-  # Uses auto-sections-strategy to group fermentation devices by device.id.
-  # History graph at bottom shows all fermentation device data for the past 7 days.
+  # Label the fermentation hardware to populate the native automatic section.
   - title: Active Fermentations
     icon: mdi:thermometer
-    strategy:
-      type: custom:auto-sections
-      options:
-        group_by: device.id
-        group_name: device.id|name
-        max_columns: 2
-        filter:
-          include:
-            - attribute:
-                grainfather_entity_type: fermentation_device
-        sort:
-          method: alphabetical
-          direction: ascending
-        card_options:
-          _:
-            type: custom:device-card
-            section_order:
-              - sensors
-              - controls
-              - configurations
-              - diagnostics
-            preview_count: 35
-        sections:
-          bottom:
-            - type: grid
-              cards:
-                - type: custom:auto-entities
-                  show_empty: false
-                  card:
-                    type: history-graph
-                    title: Fermentation History (7 d)
-                    hours_to_show: 168
-                  card_param: entities
-                  filter:
-                    include:
-                      - attribute:
-                          grainfather_entity_type: fermentation_device
+    type: sections
+    max_columns: 2
+    sections:
+      - strategy:
+          type: entities
+          title: Fermentation Devices
+          target:
+            label_id: grainfather_fermentation
+          entity_types: [sensor, number, select]
+          include_config_and_diagnostic: true
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:auto-entities
+            show_empty: false
+            card:
+              type: history-graph
+              title: Fermentation History (7 d)
+              hours_to_show: 168
+            card_param: entities
+            filter:
+              include:
+                - attributes:
+                    grainfather_entity_type: fermentation_device
 
   # ── Recipe & Metrics ─────────────────────────────────────────────────────────
   # Ready-made view for the recipe-metric / extra brew-session sensors, recipe
@@ -155,40 +117,52 @@ views:
       # sensor.grainfather_<session>_recipe_info sensors.
       - type: markdown
         title: Recipe Ingredients
-        content: >
+        content: |-
           {% set s = 'sensor.grainfather_batch_01_recipe_info' %}
+          {% set fermentables = state_attr(s, 'fermentables') or [] %}
+          {% set grain_unit = fermentables | map(attribute='unit', default='') | reject('none') | reject('equalto', '') | first | default('') %}
+          {% set hop_unit = {'kg': 'g', 'lb': 'oz'}.get(grain_unit, '') %}
+          {% macro number(value, decimals) -%}
+            {{- ('%.*f' | format(decimals, value | float) | replace('.', ',')) if is_number(value) else '—' -}}
+          {%- endmacro %}
+          {% macro metric(key, decimals, unit) -%}
+            {%- set value = state_attr(s, key) -%}
+            {{- (number(value, decimals) ~ ' ' ~ unit) if is_number(value) else '—' -}}
+          {%- endmacro %}
+          {% macro weight(item, decimals, fallback='', small=false) -%}
+            {%- if item.amount is defined and is_number(item.amount) -%}
+              {%- set value = item.amount | float -%}
+              {%- set unit = item.unit | default(fallback, true) -%}
+              {%- if small and 0 < value < 1 and unit == 'kg' -%}
+                {%- set value, unit, decimals = value * 1000, 'g', 0 -%}
+              {%- elif small and 0 < value < 1 and unit == 'lb' -%}
+                {%- set value, unit, decimals = value * 16, 'oz', 1 -%}
+              {%- endif -%}
+              {{- ' — ' ~ number(value, decimals) ~ (' ' ~ unit if unit else '') -}}
+            {%- endif -%}
+          {%- endmacro %}
 
           ## {{ states(s) }}
 
-          **ABV** {{ state_attr(s, 'abv') }} % &nbsp;·&nbsp;
-          **IBU** {{ state_attr(s, 'ibu') }} &nbsp;·&nbsp;
-          **SRM** {{ state_attr(s, 'srm') }}
-
+          **ABV** {{ metric('abv', 1, '% vol') }} · **IBU** {{ metric('ibu', 0, 'IBU') }} · **SRM** {{ metric('srm', 1, 'SRM') }}
 
           ### Fermentables
-
-          {% for f in state_attr(s, 'fermentables') or [] %}
-          - {{ f.name }}{% if f.amount is defined %} — {{ f.amount }}{% endif %}
+          {% for f in fermentables -%}
+          - {{ f.name }}{{ weight(f, 2, small=true) }}
           {% endfor %}
-
 
           ### Hops
-
-          {% for h in state_attr(s, 'hops') or [] %}
-          - {{ h.name }}{% if h.amount is defined %} — {{ h.amount }}{% endif %}
+          {% for h in state_attr(s, 'hops') or [] -%}
+          - {{ h.name }}{{ weight(h, 1, hop_unit) }}
           {% endfor %}
 
-
           ### Yeasts
-
-          {% for y in state_attr(s, 'yeasts') or [] %}
+          {% for y in state_attr(s, 'yeasts') or [] -%}
           - {{ y.name }}
           {% endfor %}
 
-
           ### Mash steps
-
-          {% for m in state_attr(s, 'mash_steps') or [] %}
-          - {{ m.name }}{% if m.temperature is defined %} — {{ m.temperature }} °C{% endif %}{% if m.time is defined %} / {{ m.time }} min{% endif %}
+          {% for m in state_attr(s, 'mash_steps') or [] -%}
+          - {{ m.name }}{% if m.temperature is defined and is_number(m.temperature) %} — {{ number(m.temperature, 1) }} °C{% endif %}{% if m.time is defined and is_number(m.time) %} / {{ number(m.time, 0) }} min{% endif %}
           {% endfor %}
 
