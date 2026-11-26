@@ -431,18 +431,26 @@ Shows active sessions with the compact brew session layout.
 
 ![Brew sessions dashboard using the compact card layout](docs/images/brew_session_with_compact_card.png)
 
-### Fermentation Device Dashboard
+### Active Fermentations
 
-Shows grouped fermentation-device cards for chambers, controllers, and pill sensors.
+The example dashboard shows native Home Assistant tiles for labeled fermentation
+devices and seven days of history.
 
-![Fermentation device cards grouped by hardware area](docs/images/fermentation_devices_cards.png)
+![Native fermentation device tiles and seven-day history with example data](docs/images/fermentation_devices_cards.png)
 
 ### Brew Session Detailed Card
 
-Shows a detailed active fermentation session with live measurements, history charts,
-fermentation steps, and controls.
+The detailed batch card shows recipe metrics, ingredients, and fermentation
+steps. Temperature and gravity charts appear only while the batch is fermenting.
 
-![Detailed brew session card showing live fermentation data](docs/images/brew_sessions_collection_with_detailed_card.png)
+![Detailed batch card with example temperature and gravity curves](docs/images/brew_sessions_collection_with_detailed_card.png)
+
+### Recipe Ingredients
+
+The **Recipe & Metrics** view shows rounded values and units in the recipe
+ingredient list.
+
+![Example recipe with rounded metrics and ingredient amounts in kg and g](docs/images/recipe_metrics.png)
 
 ## Current Limitations
 
