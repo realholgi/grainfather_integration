@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing } from 'https://unpkg.com/lit@3.3.3/index.js?module';
+import { renderFermentationGraphs, sgToBrix, sgToPlato } from './grainfather-fermentation-graphs.js';
 
 class GrainfatherBrewSessionCard extends LitElement {
   static properties = {
@@ -57,6 +58,7 @@ class GrainfatherBrewSessionCard extends LitElement {
     }
 
     .body { padding: 12px 16px 16px; }
+    grainfather-fermentation-graphs { margin-top: 8px; }
 
     .title {
       font-size: 1.1rem;
@@ -616,6 +618,8 @@ class GrainfatherBrewSessionCard extends LitElement {
               `
             : nothing}
 
+          ${renderFermentationGraphs(this.hass, entity, densityUnit)}
+
           ${showRecipeMetrics && recipeMetrics.length > 0
             ? html`
                 <hr class="divider" />
@@ -685,12 +689,12 @@ function _formatGravityFromSg(value, unit = 'sg', includeUnit = false) {
 
   const normalizedUnit = _normalizeDensityUnit(unit);
   if (normalizedUnit === 'plato') {
-    const formatted = _convertSgToPlato(sg).toFixed(1);
+    const formatted = sgToPlato(sg).toFixed(1);
     return includeUnit ? `${formatted} °P` : formatted;
   }
 
   if (normalizedUnit === 'brix') {
-    const formatted = _convertSgToBrix(sg).toFixed(1);
+    const formatted = sgToBrix(sg).toFixed(1);
     return includeUnit ? `${formatted} °Bx` : formatted;
   }
 
@@ -714,14 +718,6 @@ function _resolveDensityUnit(configuredUnit, attrs) {
 
   const fromIntegration = String(attrs?.default_density_unit || 'sg').toLowerCase();
   return _normalizeDensityUnit(fromIntegration);
-}
-
-function _convertSgToPlato(sg) {
-  return -616.868 + (1111.14 * sg) - (630.272 * sg * sg) + (135.997 * sg * sg * sg);
-}
-
-function _convertSgToBrix(sg) {
-  return (((182.4601 * sg) - 775.6821) * sg + 1262.7794) * sg - 669.5622;
 }
 
 function _ingredientName(item) {

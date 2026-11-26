@@ -344,6 +344,8 @@ Choose `default` to use the integration-wide setting.
   Hop amounts show `g` for metric recipes or `oz` for imperial recipes.
   The card lists fermentation steps and shows durations such as `1d 7h`.
   It highlights the current step only while the session is `fermenting`.
+  While fermenting, it charts the displayed batch's hourly temperature and
+  gravity history from Recorder. The gravity chart follows `density_unit`.
 - Compact card (V3) provides a denser summary layout for large dashboards.
 - Both cards display target ABV to one decimal place and IBU as a whole number
   without changing the underlying sensor values.

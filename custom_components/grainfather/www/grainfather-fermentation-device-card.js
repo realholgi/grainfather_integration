@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing } from 'https://unpkg.com/lit@3.3.3/index.js?module';
+import { renderFermentationGraphs, sgToBrix, sgToPlato } from './grainfather-fermentation-graphs.js';
 
 // ---------------------------------------------------------------------------
 // Grainfather Fermentation Device Card
@@ -73,12 +74,6 @@ function _t(lang, key) {
 // ---------------------------------------------------------------------------
 // Gravity conversion helpers
 // ---------------------------------------------------------------------------
-function _sgToPlato(sg) {
-  return -616.868 + 1111.14 * sg - 630.272 * sg * sg + 135.997 * sg * sg * sg;
-}
-function _sgToBrix(sg) {
-  return ((182.4601 * sg - 775.6821) * sg + 1262.7794) * sg - 669.5622;
-}
 function _brixToSg(brix) {
   // Standard approximation used in brewing calculators.
   return 1 + (brix / (258.6 - ((brix / 258.2) * 227.1)));
@@ -108,8 +103,8 @@ function _fmtGravity(raw, unit) {
   const sg = parseFloat(raw);
   if (!isFinite(sg)) return '—';
   const u = _normUnit(unit);
-  if (u === 'plato') return `${_sgToPlato(sg).toFixed(1)} °P`;
-  if (u === 'brix')  return `${_sgToBrix(sg).toFixed(1)} °Bx`;
+  if (u === 'plato') return `${sgToPlato(sg).toFixed(1)} °P`;
+  if (u === 'brix')  return `${sgToBrix(sg).toFixed(1)} °Bx`;
   return sg.toFixed(4);
 }
 function _fmtTemp(raw) {
@@ -320,9 +315,6 @@ class GrainfatherFermentationDeviceCard extends LitElement {
     _config: { state: true },
     _tick: { state: true },
     _optimistic: { state: true },
-    _graphData: { state: true },
-    _graphLoading: { state: true },
-    _graphError: { state: true },
   };
 
   static styles = css`
@@ -620,12 +612,7 @@ class GrainfatherFermentationDeviceCard extends LitElement {
       font-size: 0.9rem;
     }
 
-    .graph-section { margin: 0 8px 10px; display: grid; gap: 8px; }
-    .graph-panel { padding: 8px 10px; background: rgba(0,0,0,.20); border-radius: 10px; }
-    .graph-title { color: #8fa0b4; font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; }
-    .graph-empty { color: #8fa0b4; font-size: .8rem; min-height: 48px; display: grid; place-items: center; }
-    .graph-svg { display: block; width: 100%; height: auto; margin-top: 4px; }
-    .graph-label { fill: #8fa0b4; font-size: 22px; }
+    grainfather-fermentation-graphs { margin: 0 8px 10px; }
   `;
 
   constructor() {
@@ -634,10 +621,6 @@ class GrainfatherFermentationDeviceCard extends LitElement {
     this._config = {};
     this._tick = 0;
     this._optimistic = null;
-    this._graphData = null;
-    this._graphLoading = false;
-    this._graphError = false;
-    this._graphRequestKey = null;
     this._lastRenderSnapshot = null;
     this._pendingBySession = new Map();
     this._flushTimers = new Map();
@@ -887,79 +870,6 @@ class GrainfatherFermentationDeviceCard extends LitElement {
     })?.[0] || null;
   }
 
-  _ensureGraphStatistics(batchEntityId = this._resolveLinkedBatchEntity()) {
-    const state = this._config?.show_graphs === false ? null : this.hass?.states[batchEntityId];
-    const attrs = state?.attributes || {};
-    const start = Date.parse(attrs.fermentation_start_date) ? attrs.fermentation_start_date : '2001-01-07T00:00:00.000Z';
-    const hour = new Date().toISOString().slice(0, 13);
-    const key = state && String(attrs.status || '').toLowerCase() === 'fermenting'
-      && state.state !== 'unavailable' && state.state !== 'unknown'
-      && attrs.temperature_statistic_id && attrs.specific_gravity_statistic_id
-      ? `${attrs.temperature_statistic_id}|${attrs.specific_gravity_statistic_id}|${hour}` : null;
-    if (key === this._graphRequestKey) return;
-    this._graphRequestKey = key;
-    this._graphData = null;
-    this._graphError = false;
-    if (!key) return;
-    this._graphLoading = true;
-    this.hass.callWS({
-      type: 'recorder/statistics_during_period',
-      start_time: start,
-      end_time: new Date().toISOString(),
-      statistic_ids: [attrs.temperature_statistic_id, attrs.specific_gravity_statistic_id],
-      period: 'hour',
-      types: ['mean'],
-    }).then((data) => {
-      if (this._graphRequestKey === key) this._graphData = data;
-    }).catch(() => {
-      if (this._graphRequestKey === key) this._graphError = true;
-    }).finally(() => {
-      if (this._graphRequestKey === key) this._graphLoading = false;
-    });
-  }
-
-  _renderGraph(title, rows, color, unit, precision = 1, convert = Number) {
-    if (this._graphError) return html`<div class="graph-panel"><div class="graph-title">${title}</div><div class="graph-empty">History unavailable</div></div>`;
-    const values = (rows || []).filter((row) => _isValidNumber(row.mean));
-    if (!values.length) return html`<div class="graph-panel"><div class="graph-title">${title}</div><div class="graph-empty">${this._graphLoading ? 'Loading history…' : 'No history yet'}</div></div>`;
-    const numbers = values.map((row) => convert(Number(row.mean)));
-    const min = Math.min(...numbers), max = Math.max(...numbers), range = max - min || 1;
-    const points = numbers.map((value, index) => `${40 + index * 880 / Math.max(numbers.length - 1, 1)},${145 - (value - min) * 110 / range}`).join(' ');
-    return html`<div class="graph-panel"><div class="graph-title">${title}</div>
-      <svg class="graph-svg" viewBox="0 0 960 180" role="img" aria-label=${title}>
-        <polyline fill="none" stroke=${color} stroke-width="4" points=${points}></polyline>
-        <text class="graph-label" x="40" y="175">${new Date(values[0].start).toLocaleDateString()}</text>
-        <text class="graph-label" x="780" y="175">${new Date(values.at(-1).start).toLocaleDateString()}</text>
-        <text class="graph-label" x="40" y="20">${max.toFixed(precision)} ${unit}</text>
-        <text class="graph-label" x="820" y="20">${min.toFixed(precision)} ${unit}</text>
-      </svg></div>`;
-  }
-
-  _renderGraphs(batchEntityId, unit) {
-    const state = this.hass?.states[batchEntityId];
-    const attrs = state?.attributes;
-    if (
-      this._config?.show_graphs === false
-      || !attrs
-      || String(attrs.status || '').toLowerCase() !== 'fermenting'
-      || state.state === 'unavailable'
-      || state.state === 'unknown'
-      || !attrs.temperature_statistic_id
-      || !attrs.specific_gravity_statistic_id
-    ) return nothing;
-    const data = this._graphData || {};
-    const gravity = data[attrs.specific_gravity_statistic_id];
-    const gravityGraph = unit === 'plato'
-      ? this._renderGraph('Gravity', gravity, '#7ec8e3', '°P', 1, _sgToPlato)
-      : unit === 'brix'
-        ? this._renderGraph('Gravity', gravity, '#7ec8e3', '°Bx', 1, _sgToBrix)
-        : this._renderGraph('Gravity', gravity, '#7ec8e3', 'SG', 4);
-    return html`<div class="graph-section">
-      ${this._renderGraph('Temperature', data[attrs.temperature_statistic_id], '#d9c44a', '°C')}
-      ${gravityGraph}
-    </div>`;
-  }
-
   // Resolve the best available gravity reading for this device.
   // Priority:
   //   1. last_specific_gravity attribute (live sensor value)
@@ -1157,7 +1067,6 @@ class GrainfatherFermentationDeviceCard extends LitElement {
 
   render() {
     if (!this.hass) return nothing;
-    this._ensureGraphStatistics();
 
     const entityId = this._resolveTemperatureEntityId();
     if (!entityId) {
@@ -1315,6 +1224,8 @@ class GrainfatherFermentationDeviceCard extends LitElement {
     // Include the linked recipe when its batch metadata is available.
     const displayName = _resolveDisplayName(attrs);
     const titleName = recipeName ? `${displayName} · ${recipeName}` : displayName;
+    const graphs = this._config?.show_graphs === false
+      ? nothing : renderFermentationGraphs(this.hass, linkedBatchState, unit);
 
     return html`
       <ha-card>
@@ -1326,8 +1237,8 @@ class GrainfatherFermentationDeviceCard extends LitElement {
         </div>
 
         ${hasSession
-          ? this._renderActive(lang, currentTemp, displayedTargetTemperature, gravity, displayedStep, stepCount, unit, abv, displayedTotalMinutesRemaining, derivedSteps, isFermenting, this._renderGraphs(matchedBatchSensorId, unit))
-          : html`${this._renderPassive(lang, currentTemp, gravity)}${this._renderGraphs(matchedBatchSensorId, unit)}`}
+          ? this._renderActive(lang, currentTemp, displayedTargetTemperature, gravity, displayedStep, stepCount, unit, abv, displayedTotalMinutesRemaining, derivedSteps, isFermenting, graphs)
+          : this._renderPassive(lang, currentTemp, gravity)}
       </ha-card>
     `;
   }

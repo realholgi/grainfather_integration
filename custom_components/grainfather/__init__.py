@@ -224,9 +224,11 @@ async def _async_register_card_resources(hass: HomeAssistant) -> None:
             path=str(_CARD_DIRECTORY / filename),
             cache_headers=False,
         )
-        for filename in _CARD_FILES
+        for filename in (*_CARD_FILES, "grainfather-fermentation-graphs.js")
     ]
-    module_urls = await hass.async_add_executor_job(_card_module_urls, paths)
+    module_urls = await hass.async_add_executor_job(
+        _card_module_urls, paths[: len(_CARD_FILES)]
+    )
     await hass.http.async_register_static_paths(paths)
     for url in module_urls:
         add_extra_js_url(hass, url)
