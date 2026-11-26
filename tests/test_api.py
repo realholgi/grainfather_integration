@@ -225,6 +225,7 @@ def test_parse_recipe_payload_extracts_metrics_and_ingredients() -> None:
     assert recipe.fermentables[0]["unit"] == "kg"
     assert recipe.fermentables[0]["ppg"] == 37
     assert recipe.hops[0]["name"] == "Citra"
+    assert recipe.hops[0]["unit"] == "g"
     assert recipe.hops[0]["aa"] == 12.0
     assert recipe.yeasts[0]["attenuation"] == 81
     assert recipe.mash_steps[0]["temperature"] == 66
@@ -397,8 +398,9 @@ def test_serialize_recipe_ingredients_caps_and_handles_none() -> None:
     payload = {
         "id": 1,
         "name": "IPA",
+        "unit_type_id": 20,
         "fermentables": [{"name": f"F{i}"} for i in range(50)],
-        "hops": [{"name": "Citra"}],
+        "hops": [{"name": "Citra", "amount": "1.5"}],
         "yeasts": [],
         "mash_steps": [{"name": "Mash", "temperature": 66}],
     }
@@ -411,7 +413,8 @@ def test_serialize_recipe_ingredients_caps_and_handles_none() -> None:
     assert serialized["hops"] == [
         {
             "name": "Citra",
-            "amount": None,
+            "amount": 1.5,
+            "unit": "oz",
             "aa": None,
             "time": None,
             "ibu": None,

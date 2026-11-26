@@ -341,6 +341,7 @@ Choose `default` to use the integration-wide setting.
   Assistant brew-session device, even if you rename the sensor. Fermentable
   amounts below `1 kg` or `1 lb` show `g` or `oz`, respectively, when positive.
   Other amounts retain the recipe's `kg` or `lb` unit.
+  Hop amounts show `g` for metric recipes or `oz` for imperial recipes.
   The card lists fermentation steps and shows durations such as `1d 7h`.
   It highlights the current step only while the session is `fermenting`.
 - Compact card (V3) provides a denser summary layout for large dashboards.
